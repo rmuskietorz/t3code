@@ -1,4 +1,6 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { readSplitViewHost } from "~/splitViewHost";
+import { buildThreadRouteParams } from "~/threadRoutes";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
 import {
   type AtomCommandResult,
@@ -139,6 +141,7 @@ export function useThreadActionMenu(input: {
           branch: thread.branch ?? null,
           projectFilter: null,
           groupFilter: null,
+          splitView: readSplitViewHost() !== null,
           isPinned: thread.pinnedAt != null,
           isSettled: supports.settlement && thread.settledOverride === "settled",
           autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -246,6 +249,14 @@ export function useThreadActionMenu(input: {
                 environmentId: threadRef.environmentId,
                 input: { threadId: threadRef.threadId, regenerateTitle: true },
               }),
+            );
+            return;
+          case "open-in-split-view":
+            readSplitViewHost()?.openInOtherPane(
+              router.buildLocation({
+                to: "/$environmentId/$threadId",
+                params: buildThreadRouteParams(threadRef),
+              }).href,
             );
             return;
           case "mark-unread":

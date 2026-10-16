@@ -11,6 +11,7 @@ const baseState: ThreadActionMenuState = {
   branch: null,
   projectFilter: null,
   groupFilter: null,
+  splitView: false,
   isPinned: false,
   isSettled: false,
   autoSettleEnabled: true,
@@ -157,6 +158,12 @@ describe("buildThreadActionMenuItems", () => {
       }).find((item) => item.id === "filter-by-group"),
     ).toMatchObject({ label: "Show all projects" });
     expect(ids(baseState)).not.toContain("filter-by-group");
+  });
+
+  it("offers the split view only when a shell can show a second pane", () => {
+    expect(ids(baseState)).not.toContain("open-in-split-view");
+    const items = buildThreadActionMenuItems({ ...baseState, splitView: true });
+    expect(items[0]).toMatchObject({ id: "open-in-split-view", label: "Open in split view" });
   });
 
   it("includes branch items only for threads with a branch", () => {

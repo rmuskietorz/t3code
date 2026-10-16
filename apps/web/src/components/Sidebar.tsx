@@ -1,4 +1,5 @@
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
+import { readSplitViewHost } from "~/splitViewHost";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import {
@@ -4443,6 +4444,7 @@ export default function Sidebar() {
                     isActive: projectScopeKey === threadProjectGroup.projectKey,
                   }
                 : null,
+              splitView: readSplitViewHost() !== null,
               groupFilter: threadGroupSection
                 ? {
                     label: threadGroupSection.label,
@@ -4577,6 +4579,14 @@ export default function Sidebar() {
             }
             return;
           }
+          case "open-in-split-view":
+            readSplitViewHost()?.openInOtherPane(
+              router.buildLocation({
+                to: "/$environmentId/$threadId",
+                params: buildThreadRouteParams(threadRef),
+              }).href,
+            );
+            return;
           case "mark-unread":
             markThreadUnread(threadRef);
             return;

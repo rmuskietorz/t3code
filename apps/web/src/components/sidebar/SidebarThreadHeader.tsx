@@ -1,4 +1,4 @@
-import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { Columns2Icon, FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -11,6 +11,8 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { readSplitViewHost } from "../../splitViewHost";
+import { SPLIT_VIEW_BUTTON_LABEL } from "./SplitViewButton";
 
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
@@ -54,6 +56,7 @@ export function SidebarThreadHeader({
   activeSearchResultIndex,
   onClearSearch,
 }: SidebarThreadHeaderProps) {
+  const splitViewHost = readSplitViewHost();
   const resultsVisible = isSearching && searchResultCount > 0;
   // Results shrink as the query narrows, so the active index can outrun the
   // list; pointing aria-activedescendant at a removed option strands the
@@ -107,6 +110,14 @@ export function SidebarThreadHeader({
         ) : null}
       </div>
       <div className="flex shrink-0 items-center">
+        {splitViewHost ? (
+          <SidebarHeaderIconButton
+            label={SPLIT_VIEW_BUTTON_LABEL}
+            onClick={() => splitViewHost.toggle()}
+          >
+            <Columns2Icon />
+          </SidebarHeaderIconButton>
+        ) : null}
         {expansionMenu}
         {hasProjects ? (
           <>

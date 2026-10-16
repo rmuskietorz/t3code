@@ -54,7 +54,7 @@ import {
   PRIMARY_LOCAL_ENVIRONMENT_ID,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
-import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
@@ -63,6 +63,7 @@ import {
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
+  Columns2Icon,
   CornerLeftUpIcon,
   FileSearchIcon,
   FolderGit2Icon,
@@ -135,6 +136,7 @@ import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useAgentSessionReimport } from "../hooks/useAgentSessionReimport";
 import { requestSidebarBulkExpansion } from "../sidebarBulkExpansion";
+import { readSplitViewHost } from "../splitViewHost";
 import { sidebarExpansionMenuGroups } from "./sidebar/SidebarExpansionMenu";
 import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
@@ -600,6 +602,7 @@ function OpenCommandPaletteDialog(props: {
   readonly clearOpenIntent: () => void;
 }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const [query, setQuery] = useState(openIntent?.kind === "search" ? openIntent.query : "");
@@ -1928,6 +1931,38 @@ function OpenCommandPaletteDialog(props: {
         icon: <PullRequestGlyph.link className={ITEM_ICON_CLASS} />,
         run: async () => {
           useRightPanelStore.getState().open(threadRef, "pull-requests");
+        },
+      });
+    }
+  }
+
+  const splitViewHost = readSplitViewHost();
+  if (splitViewHost !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:toggle-split-view",
+      searchTerms: ["split", "screen", "view", "side by side", "two", "panes", "columns"],
+      title: "Toggle split view",
+      icon: <Columns2Icon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        splitViewHost.toggle();
+      },
+    });
+    if (activeThread !== null) {
+      const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+      actionItems.push({
+        kind: "action",
+        value: "action:open-thread-in-split-view",
+        searchTerms: ["split", "screen", "view", "side by side", "other pane", "open"],
+        title: "Open this thread in split view",
+        icon: <Columns2Icon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          splitViewHost.openInOtherPane(
+            router.buildLocation({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(threadRef),
+            }).href,
+          );
         },
       });
     }

@@ -3,6 +3,7 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
 
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
+  | "open-in-split-view"
   | "filter-by-project"
   | "filter-by-group"
   | "project-settings"
@@ -71,6 +72,8 @@ export interface ThreadActionMenuState {
     readonly label: string;
     readonly isActive: boolean;
   } | null;
+  /** Whether an embedding shell can show this thread in a second pane. */
+  readonly splitView: boolean;
   /** The custom project group of the thread's project, when groups are on. */
   readonly groupFilter: {
     readonly label: string;
@@ -98,6 +101,7 @@ export interface ThreadActionMenuState {
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
   return ![
     "new-thread-on-branch",
+    "open-in-split-view",
     "project-settings",
     "mark-unread",
     "copy",
@@ -119,6 +123,9 @@ export function buildThreadActionMenuItems(
             icon: "message-square-plus",
           },
         ]
+      : []),
+    ...(state.splitView
+      ? [{ id: "open-in-split-view" as const, label: "Open in split view", icon: "columns-2" }]
       : []),
     ...(state.supports.pinning
       ? [

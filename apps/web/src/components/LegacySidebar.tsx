@@ -1,3 +1,4 @@
+import { readSplitViewHost } from "~/splitViewHost";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import { Spinner } from "~/components/ui/spinner";
@@ -173,6 +174,7 @@ import {
   customProjectGroupDragId,
 } from "./sidebar/CustomProjectGroupHeader";
 import { SidebarExpansionMenu, sidebarExpansionMenuGroups } from "./sidebar/SidebarExpansionMenu";
+import { SplitViewButton } from "./sidebar/SplitViewButton";
 import {
   partitionIntoCustomProjectGroups,
   UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
@@ -2354,8 +2356,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         thread.environmentId,
         AuthOrchestrationOperateScope,
       );
+      const splitViewHost = readSplitViewHost();
       const clicked = await api.contextMenu.show(
         [
+          ...(splitViewHost
+            ? [{ id: "open-in-split-view", label: "Open in split view", icon: "columns-2" }]
+            : []),
           ...(thread.branch
             ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
             : []),
@@ -2374,6 +2380,16 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         ],
         position,
       );
+
+      if (clicked === "open-in-split-view") {
+        splitViewHost?.openInOtherPane(
+          router.buildLocation({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(threadRef),
+          }).href,
+        );
+        return;
+      }
 
       if (clicked === "project-settings") {
         if (isMobile) setOpenMobile(false);
@@ -3249,6 +3265,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               })}
               onAction={handleBulkExpansion}
             />
+            <SplitViewButton />
             <Tooltip>
               <TooltipTrigger
                 render={
