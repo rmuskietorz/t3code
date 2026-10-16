@@ -746,6 +746,10 @@ export const make = Effect.gen(function* () {
     ).pipe(Effect.orElseSucceed(() => null));
   });
 
+  // A transcript over the history budget fails the same way until it changes, so
+  // periodic re-imports skip it by identity instead of streaming it again.
+  const oversizedTranscripts = new Map<string, ReturnType<typeof transcriptIdentity>>();
+
   const readTranscript = Effect.fn("AgentSessionScanner.readTranscript")(function* (
     filePath: string,
     expected: ReturnType<typeof transcriptIdentity>,
@@ -829,6 +833,13 @@ export const make = Effect.gen(function* () {
     ).pipe(
       Effect.catch((cause) =>
         Effect.logWarning("Could not read imported transcript", { filePath, cause }).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              if (cause instanceof Error && cause.cause instanceof TranscriptJsonLimitError) {
+                oversizedTranscripts.set(filePath, expected);
+              }
+            }),
+          ),
           Effect.as(null),
         ),
       ),
@@ -1343,7 +1354,9 @@ export const make = Effect.gen(function* () {
               source: completedSource,
             });
           }
+          const oversized = oversizedTranscripts.get(transcript.filePath);
           if (
+            (oversized !== undefined && sameTranscriptIdentity(oversized, identity)) ||
             transcriptsRemaining === 0 ||
             recordsRemaining === 0 ||
             identity.size > MAX_IMPORTED_TRANSCRIPT_BYTES ||

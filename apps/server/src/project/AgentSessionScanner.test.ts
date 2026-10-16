@@ -2279,6 +2279,63 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
       }),
     );
 
+    it.effect("does not spend the import budget on an unchanged oversized transcript", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+        const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+        const workspace = yield* makeTempDir("t3code-workspace-");
+        yield* writeTranscript({
+          filePath: path.join(codexHomePath, "sessions", "2026", "08", "24", "rollout-huge.jsonl"),
+          contents: [
+            encodeTranscriptRecord({
+              type: "session_meta",
+              payload: { id: "huge", cwd: workspace },
+            }),
+            encodeTranscriptRecord({
+              type: "event_msg",
+              payload: { type: "user_message", message: "x".repeat(33 * 1024 * 1024) },
+            }),
+          ].join("\n"),
+          mtimeMs: nowMs - 1_000,
+        });
+        yield* writeCodexSession({
+          codexHomePath,
+          workspace,
+          sessionId: "older",
+          mtimeMs: nowMs - 2_000,
+        });
+
+        const runs = yield* Effect.gen(function* () {
+          const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+          const run = scanner.recentThreads(workspace).pipe(
+            Stream.runCollect,
+            Effect.map((outcomes) =>
+              Array.from(outcomes, (outcome) =>
+                outcome._tag === "Importable" ? outcome.thread.providerSessionId : outcome._tag,
+              ),
+            ),
+          );
+          return [yield* run, yield* run] as const;
+        }).pipe(
+          Effect.provide(
+            layerScannerTest({
+              claudeHomePath,
+              codexHomePath,
+              importSettings: { agentSessionImportMaxSessions: 1 },
+            }),
+          ),
+        );
+
+        expect(runs).toEqual([
+          ["Skipped", "Skipped"],
+          ["Skipped", "older"],
+        ]);
+      }),
+    );
+
     it.effect("sees transcripts created after the first import once candidates refresh", () =>
       Effect.gen(function* () {
         const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
