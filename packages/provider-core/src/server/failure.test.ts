@@ -207,3 +207,15 @@ it.effect("keys terminal failure items by provider turn across retries and fallb
     assert.equal(firstAttempt.ordinal, 101);
   }).pipe(Effect.provide(IdAllocator.layer)),
 );
+
+it("names the terminal session that still holds a Claude conversation", () => {
+  const message = "This conversation is still open in another Claude Code session (PID 42).";
+  const sessionInUse = { _tag: "ClaudeSessionInUseElsewhereError", message };
+  assert.equal(makeProviderFailure({ cause: sessionInUse }).message, message);
+  assert.equal(
+    makeProviderFailure({
+      cause: { _tag: "ProviderAdapterTurnStartError", cause: sessionInUse },
+    }).message,
+    message,
+  );
+});

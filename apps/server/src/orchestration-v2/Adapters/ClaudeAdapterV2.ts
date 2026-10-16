@@ -111,7 +111,14 @@ import * as Stream from "effect/Stream";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { resolveClaudeSdkExecutablePath } from "../../provider/Drivers/ClaudeExecutable.ts";
 import { planClaudeSkillDispatch } from "../../provider/Drivers/ClaudeSkillDispatch.ts";
-import { discoverClaudeSkills } from "../../provider/Drivers/ClaudeSkills.ts";
+import {
+  discoverClaudeSkills,
+  resolveClaudeConfigDirPath,
+} from "../../provider/Drivers/ClaudeSkills.ts";
+import {
+  ClaudeSessionInUseElsewhereError,
+  findExternalClaudeSessionOwner,
+} from "../../provider/Drivers/ClaudeSessionOwners.ts";
 import {
   compileClaudeModelSelection,
   type CompiledClaudeModelSelection,
@@ -8099,6 +8106,27 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             turnInput.nativeThreadHasTurns ?? turnInput.providerTurnOrdinal > 1;
           const shouldResume =
             resumeSessionAt !== undefined || openedWithResume || hasPersistedProviderTurn;
+          // An imported conversation can still be open in a terminal; a second
+          // writer would interleave turns in its transcript, so refuse instead.
+          const externalOwner = yield* Effect.gen(function* () {
+            return yield* findExternalClaudeSessionOwner({
+              configDirPath: yield* resolveClaudeConfigDirPath(
+                adapterOptions.settings,
+                adapterOptions.environment,
+                turnInput.runtimePolicy.cwd ?? undefined,
+              ),
+              sessionId: nativeThreadId,
+            });
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
+          );
+          if (Option.isSome(externalOwner)) {
+            return yield* new ClaudeSessionInUseElsewhereError({
+              pid: externalOwner.value.pid,
+              sessionName: externalOwner.value.name,
+            });
+          }
           const queryOptions = makeClaudeQueryOptions({
             modelSelection: turnInput.modelSelection,
             nativeThreadId,
