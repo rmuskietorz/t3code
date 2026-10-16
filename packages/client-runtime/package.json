@@ -211,6 +211,10 @@
       "types": "./src/state/pullRequests.ts",
       "default": "./src/state/pullRequests.ts"
     },
+    "./state/custom-project-groups": {
+      "types": "./src/state/customProjectGroups.ts",
+      "default": "./src/state/customProjectGroups.ts"
+    },
     "./state/project-grouping": {
       "types": "./src/state/projectGrouping.ts",
       "default": "./src/state/projectGrouping.ts"

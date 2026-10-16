@@ -149,6 +149,39 @@ describe("storage cleanup settings", () => {
   });
 });
 
+describe("ClientSettings custom project groups", () => {
+  it("defaults to off with no groups so the sidebar keeps its current layout", () => {
+    expect(decodeClientSettings({})).toMatchObject({
+      sidebarCustomProjectGroupsEnabled: false,
+      sidebarCustomProjectGroups: [],
+      sidebarCustomProjectGroupAssignments: {},
+    });
+  });
+
+  it("drops malformed groups instead of resetting every client setting", () => {
+    const settings = decodeClientSettings({
+      sendShortcut: "mod-enter",
+      sidebarCustomProjectGroups: [
+        { id: "work", name: "Work", pathRules: ["/var/www/*"] },
+        { id: "", name: "No id" },
+        { id: "private", name: "Private" },
+        "not a group",
+      ],
+    });
+    expect(settings.sendShortcut).toBe("mod-enter");
+    expect(settings.sidebarCustomProjectGroups).toEqual([
+      { id: "work", name: "Work", pathRules: ["/var/www/*"] },
+      { id: "private", name: "Private", pathRules: [] },
+    ]);
+  });
+
+  it("rejects a malformed group in a patch", () => {
+    expect(() =>
+      decodeClientSettingsPatch({ sidebarCustomProjectGroups: [{ id: "x", name: " " }] }),
+    ).toThrow();
+  });
+});
+
 describe("ClientSettings rich text composer", () => {
   it("enables rich text for new and existing settings without a saved preference", () => {
     expect(decodeClientSettings({}).composerRichTextEnabled).toBe(true);

@@ -270,6 +270,38 @@ const LegacyConfirmQuit = Schema.Boolean.pipe(
 
 const QuitConfirmationModeSetting = Schema.Union([QuitConfirmationMode, LegacyConfirmQuit]);
 
+export const SidebarCustomProjectGroupId = TrimmedNonEmptyString.check(Schema.isMaxLength(64));
+export type SidebarCustomProjectGroupId = typeof SidebarCustomProjectGroupId.Type;
+
+export const SidebarCustomProjectGroup = Schema.Struct({
+  id: SidebarCustomProjectGroupId,
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(80)),
+  /** Path globs that place a project here when it has no manual assignment. */
+  pathRules: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(512))).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+});
+export type SidebarCustomProjectGroup = typeof SidebarCustomProjectGroup.Type;
+
+const decodeSidebarCustomProjectGroup = Schema.decodeUnknownOption(SidebarCustomProjectGroup);
+
+/**
+ * Client settings decode as one document, so a single malformed group would
+ * otherwise reset every client setting. Invalid entries are dropped instead.
+ */
+const LenientSidebarCustomProjectGroups = Schema.Unknown.pipe(
+  Schema.decodeTo(
+    Schema.Array(SidebarCustomProjectGroup),
+    SchemaTransformation.transform({
+      decode: (raw): ReadonlyArray<typeof SidebarCustomProjectGroup.Encoded> =>
+        Array.isArray(raw)
+          ? raw.filter((entry) => decodeSidebarCustomProjectGroup(entry)._tag === "Some")
+          : [],
+      encode: (groups): unknown => groups,
+    }),
+  ),
+);
+
 export const FontFamilyPreference = Schema.String.check(Schema.isMaxLength(200));
 export type FontFamilyPreference = typeof FontFamilyPreference.Type;
 
@@ -460,6 +492,18 @@ export const ClientSettingsSchema = Schema.Struct({
   sidebarProjectSortOrder: SidebarProjectSortOrder.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_SORT_ORDER)),
   ),
+  sidebarCustomProjectGroupsEnabled: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  /** Array order is the order the groups appear in the sidebar. */
+  sidebarCustomProjectGroups: LenientSidebarCustomProjectGroups.pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  /** Physical project key ("<environmentId>:<normalized path>") to group id. */
+  sidebarCustomProjectGroupAssignments: Schema.Record(
+    TrimmedNonEmptyString,
+    SidebarCustomProjectGroupId,
+  ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   sidebarThreadSortOrder: SidebarThreadSortOrder.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_SORT_ORDER)),
   ),
@@ -1619,6 +1663,11 @@ export const ClientSettingsPatch = Schema.Struct({
     Schema.Record(TrimmedNonEmptyString, SidebarProjectGroupingMode),
   ),
   sidebarProjectSortOrder: Schema.optionalKey(SidebarProjectSortOrder),
+  sidebarCustomProjectGroupsEnabled: Schema.optionalKey(Schema.Boolean),
+  sidebarCustomProjectGroups: Schema.optionalKey(Schema.Array(SidebarCustomProjectGroup)),
+  sidebarCustomProjectGroupAssignments: Schema.optionalKey(
+    Schema.Record(TrimmedNonEmptyString, SidebarCustomProjectGroupId),
+  ),
   sidebarThreadSortOrder: Schema.optionalKey(SidebarThreadSortOrder),
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
   timestampFormat: Schema.optionalKey(TimestampFormat),
