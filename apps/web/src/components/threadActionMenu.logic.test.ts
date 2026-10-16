@@ -10,6 +10,7 @@ const baseState: ThreadActionMenuState = {
   canOperate: true,
   branch: null,
   projectFilter: null,
+  groupFilter: null,
   isPinned: false,
   isSettled: false,
   autoSettleEnabled: true,
@@ -136,6 +137,26 @@ describe("buildThreadActionMenuItems", () => {
     expect(items[filterIndex]).toMatchObject({ label: "Show all projects", icon: "folder-tree" });
     expect(items[filterIndex - 1]?.id).toBe("mark-unread");
     expect(items[filterIndex + 1]?.id).toBe("auto-settle");
+  });
+
+  it("offers filtering by the thread's project group next to the project filter", () => {
+    const items = buildThreadActionMenuItems({
+      ...baseState,
+      projectFilter: { label: "PimCore", isActive: false },
+      groupFilter: { label: "Arbeit", isActive: false },
+    });
+    const projectIndex = items.findIndex((candidate) => candidate.id === "filter-by-project");
+    expect(items[projectIndex + 1]).toMatchObject({
+      id: "filter-by-group",
+      label: "Filter by group Arbeit",
+    });
+    expect(
+      buildThreadActionMenuItems({
+        ...baseState,
+        groupFilter: { label: "Arbeit", isActive: true },
+      }).find((item) => item.id === "filter-by-group"),
+    ).toMatchObject({ label: "Show all projects" });
+    expect(ids(baseState)).not.toContain("filter-by-group");
   });
 
   it("includes branch items only for threads with a branch", () => {

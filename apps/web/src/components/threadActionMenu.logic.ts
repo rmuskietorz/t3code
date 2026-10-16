@@ -4,6 +4,7 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
   | "filter-by-project"
+  | "filter-by-group"
   | "project-settings"
   | "pin"
   | "unpin"
@@ -67,6 +68,11 @@ export interface ThreadActionMenuState {
   readonly canOperate: boolean;
   readonly branch: string | null;
   readonly projectFilter: {
+    readonly label: string;
+    readonly isActive: boolean;
+  } | null;
+  /** The custom project group of the thread's project, when groups are on. */
+  readonly groupFilter: {
     readonly label: string;
     readonly isActive: boolean;
   } | null;
@@ -166,6 +172,17 @@ export function buildThreadActionMenuItems(
             label: state.projectFilter.isActive
               ? "Show all projects"
               : `Filter by ${state.projectFilter.label}`,
+            icon: "folder-tree",
+          },
+        ]
+      : []),
+    ...(state.groupFilter
+      ? [
+          {
+            id: "filter-by-group" as const,
+            label: state.groupFilter.isActive
+              ? "Show all projects"
+              : `Filter by group ${state.groupFilter.label}`,
             icon: "folder-tree",
           },
         ]

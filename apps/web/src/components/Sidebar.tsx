@@ -149,6 +149,18 @@ import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
+import {
+  useCustomProjectGroupActions,
+  useCustomProjectGroups,
+  useCustomProjectGroupsEnabled,
+} from "../hooks/useCustomProjectGroups";
+import {
+  buildCustomGroupScopeSections,
+  buildSidebarProjectScopeItems,
+  filterGroupedSidebarProjectScopeItems,
+  resolveCustomGroupScope,
+} from "../sidebarCustomGroupScope";
+import { UNGROUPED_CUSTOM_PROJECT_GROUP_ID } from "@t3tools/client-runtime/state/custom-project-groups";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -196,7 +208,6 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
-  filterSidebarProjectScopeItems,
   formatWorkingDurationLabel,
   firstValidTimestampMs,
   hasUnseenCompletion,
@@ -2402,24 +2413,51 @@ export default function Sidebar() {
 
   const persistedProjectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
   const setProjectScopeKey = useUiStateStore((store) => store.setSidebarProjectScopeKey);
+  const customProjectGroupsEnabled = useCustomProjectGroupsEnabled();
+  const customProjectGroups = useCustomProjectGroups();
+  const customProjectGroupAssignments = useClientSettings(
+    (settings) => settings.sidebarCustomProjectGroupAssignments,
+  );
+  const customProjectGroupActions = useCustomProjectGroupActions();
+  const customGroupSettings = useMemo(
+    () => ({
+      sidebarCustomProjectGroups: customProjectGroups,
+      sidebarCustomProjectGroupAssignments: customProjectGroupAssignments,
+    }),
+    [customProjectGroupAssignments, customProjectGroups],
+  );
+  const customGroupSections = useMemo(
+    () =>
+      customProjectGroupsEnabled
+        ? buildCustomGroupScopeSections(projectGroups, customGroupSettings)
+        : null,
+    [customGroupSettings, customProjectGroupsEnabled, projectGroups],
+  );
+  const customGroupScope = useMemo(
+    () =>
+      resolveCustomGroupScope({
+        key: persistedProjectScopeKey,
+        sections: customGroupSections,
+        settings: customGroupSettings,
+      }),
+    [customGroupSections, customGroupSettings, persistedProjectScopeKey],
+  );
   const projectScopeKey = useMemo(
     () =>
-      resolveSidebarProjectScopeKey({
-        groups: projectGroups,
-        key: persistedProjectScopeKey,
-        settings: projectGroupingSettings,
-      }),
-    [persistedProjectScopeKey, projectGroups, projectGroupingSettings],
+      customGroupScope.kind === "group"
+        ? persistedProjectScopeKey
+        : customGroupScope.kind === "unavailable"
+          ? null
+          : resolveSidebarProjectScopeKey({
+              groups: projectGroups,
+              key: persistedProjectScopeKey,
+              settings: projectGroupingSettings,
+            }),
+    [customGroupScope, persistedProjectScopeKey, projectGroups, projectGroupingSettings],
   );
   const projectScopeItems = useMemo(
-    () => [
-      { value: "all", label: "All projects" },
-      ...projectGroups.map((project) => ({
-        value: project.projectKey,
-        label: project.displayName,
-      })),
-    ],
-    [projectGroups],
+    () => buildSidebarProjectScopeItems(projectGroups, customGroupSections),
+    [customGroupSections, projectGroups],
   );
   const showProjectEnvironments = useMemo(
     () => projectGroupsSpanEnvironments(projectGroups),
@@ -2455,7 +2493,7 @@ export default function Sidebar() {
   const projectScopeFilter = useComboboxFilter();
   const filteredProjectScopeItems = useMemo(
     () =>
-      filterSidebarProjectScopeItems({
+      filterGroupedSidebarProjectScopeItems({
         items: projectScopeItems,
         query: projectScopeMenuState.query,
         matches: (item, query) =>
@@ -2470,20 +2508,43 @@ export default function Sidebar() {
         : (projectGroups.find((project) => project.projectKey === projectScopeKey) ?? null),
     [projectGroups, projectScopeKey],
   );
-  const scopedProjectKeys = useMemo(
-    () =>
-      scopedProjectGroup === null
-        ? null
-        : new Set(
-            scopedProjectGroup.memberProjectRefs.map(
+  const scopedProjectKeys = useMemo(() => {
+    const scopedProjects =
+      customGroupScope.kind === "group"
+        ? customGroupScope.section.projects
+        : scopedProjectGroup === null
+          ? null
+          : [scopedProjectGroup];
+    return scopedProjects === null
+      ? null
+      : new Set(
+          scopedProjects.flatMap((project) =>
+            project.memberProjectRefs.map(
               (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
             ),
           ),
-    [scopedProjectGroup],
-  );
+        );
+  }, [customGroupScope, scopedProjectGroup]);
   const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
   const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
   useEffect(() => {
+    if (customGroupScope.kind !== "none") {
+      // A group scope that shows nothing falls back to all projects and says
+      // why, instead of leaving an unexplained empty list.
+      if (
+        customGroupScope.kind === "unavailable" &&
+        allProjectSnapshotsReady &&
+        allProjectConfigsReady
+      ) {
+        setProjectScopeKey(null);
+        toastManager.add({
+          type: "info",
+          title: "Showing all projects",
+          description: customGroupScope.message,
+        });
+      }
+      return;
+    }
     const nextKey = resolveSidebarProjectScopeKey({
       groups: projectGroups,
       key: persistedProjectScopeKey,
@@ -2494,6 +2555,7 @@ export default function Sidebar() {
       setProjectScopeKey(nextKey);
     }
   }, [
+    customGroupScope,
     allProjectConfigsReady,
     allProjectSnapshotsReady,
     persistedProjectScopeKey,
@@ -2558,6 +2620,55 @@ export default function Sidebar() {
       suppressNextScopeChangeRef.current = true;
       dispatchProjectScopeMenu({ type: "project-settings-opened" });
       openProjectSettings(projectGroup);
+    },
+  );
+  const openProjectScopeContextMenu = useStableCallback(
+    async (event: ReactMouseEvent<HTMLElement>, projectGroup: SidebarProjectSnapshot) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const position = { x: event.clientX, y: event.clientY };
+      suppressNextScopeChangeRef.current = true;
+      dispatchProjectScopeMenu({ type: "project-settings-opened" });
+      const api = readLocalApi();
+      if (!api) return;
+      const memberKeys = projectGroup.memberProjects.map((member) => member.physicalProjectKey);
+      const currentAssignment = customProjectGroupAssignments[memberKeys[0] ?? ""] ?? null;
+      const targets = [
+        ...customProjectGroups.map((group) => ({ id: group.id, label: group.name })),
+        { id: UNGROUPED_CUSTOM_PROJECT_GROUP_ID, label: "No group" },
+      ];
+      const clicked = await api.contextMenu.show(
+        [
+          {
+            id: "move-to-group",
+            label: "Move to group",
+            children: [
+              ...targets.map((target) => ({
+                id: `move-to-group:${target.id}`,
+                label: target.label,
+                ...(currentAssignment === target.id ? { checked: true } : {}),
+              })),
+              {
+                id: "move-to-group:rules",
+                label: "Use path rules",
+                separatorBefore: true,
+                ...(currentAssignment === null ? { checked: true } : {}),
+              },
+            ],
+          },
+          { id: "project-settings", label: "Project settings", icon: "settings" },
+        ],
+        position,
+      );
+      if (clicked === "project-settings") {
+        openProjectSettings(projectGroup);
+      } else if (clicked?.startsWith("move-to-group:")) {
+        const target = clicked.slice("move-to-group:".length);
+        void customProjectGroupActions.assignProjects(
+          memberKeys,
+          target === "rules" ? null : target,
+        );
+      }
     },
   );
 
@@ -4294,6 +4405,14 @@ export default function Sidebar() {
                 projectRef.projectId === thread.projectId,
             ),
           ) ?? null;
+        const threadGroupSection =
+          threadProjectGroup === null
+            ? null
+            : (customGroupSections?.find((section) =>
+                section.projects.some(
+                  (project) => project.projectKey === threadProjectGroup.projectKey,
+                ),
+              ) ?? null);
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             buildThreadActionMenuItems({
@@ -4306,6 +4425,12 @@ export default function Sidebar() {
                 ? {
                     label: threadProjectGroup.displayName,
                     isActive: projectScopeKey === threadProjectGroup.projectKey,
+                  }
+                : null,
+              groupFilter: threadGroupSection
+                ? {
+                    label: threadGroupSection.label,
+                    isActive: projectScopeKey === threadGroupSection.value,
                   }
                 : null,
               isPinned,
@@ -4338,6 +4463,13 @@ export default function Sidebar() {
           return;
         }
         switch (clicked.value) {
+          case "filter-by-group":
+            if (threadGroupSection) {
+              setProjectScopeKey(
+                projectScopeKey === threadGroupSection.value ? null : threadGroupSection.value,
+              );
+            }
+            return;
           case "filter-by-project":
             if (threadProjectGroup) {
               setProjectScopeKey(
@@ -4652,14 +4784,18 @@ export default function Sidebar() {
                     render={
                       <SidebarHeaderIconButton
                         label={
-                          scopedProjectGroup
-                            ? `Filter threads by project: ${scopedProjectGroup.displayName}`
-                            : "Filter threads by project"
+                          customGroupScope.kind === "group"
+                            ? `Filter threads by group: ${customGroupScope.section.label}`
+                            : scopedProjectGroup
+                              ? `Filter threads by project: ${scopedProjectGroup.displayName}`
+                              : "Filter threads by project"
                         }
                       />
                     }
                   >
-                    {scopedProjectGroup ? (
+                    {customGroupScope.kind === "group" ? (
+                      <FolderIcon className="size-4" />
+                    ) : scopedProjectGroup ? (
                       <span className="flex shrink-0">
                         <ProjectFavicon project={scopedProjectGroup} className="size-4" />
                       </span>
@@ -4708,15 +4844,30 @@ export default function Sidebar() {
                             hideIndicator
                             value={item}
                             onContextMenu={(event) => {
-                              if (project) handleProjectSettings(event, project);
+                              if (!project) return;
+                              if (customProjectGroupsEnabled) {
+                                void openProjectScopeContextMenu(event, project);
+                              } else {
+                                handleProjectSettings(event, project);
+                              }
                             }}
                           >
+                            {item.sectionValue !== null ? (
+                              <span aria-hidden className="w-2 shrink-0" />
+                            ) : null}
                             {project ? (
                               <ProjectFavicon project={project} className="size-4 shrink-0" />
                             ) : (
                               <FolderIcon className="size-4 shrink-0" />
                             )}
-                            <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
+                            <span
+                              className={cn(
+                                "min-w-0 flex-1 truncate text-sm",
+                                item.kind === "group" && "font-medium",
+                              )}
+                            >
+                              {item.label}
+                            </span>
                             {project && showProjectEnvironments ? (
                               <ProjectEnvironmentBadge
                                 group={project}

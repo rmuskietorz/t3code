@@ -57,7 +57,7 @@ export function CustomProjectGroupsSettings() {
         description={
           legacySidebarEnabled
             ? "Sort sidebar projects into your own groups, such as Work and Personal."
-            : "Sort sidebar projects into your own groups. Shown in the legacy sidebar for now."
+            : "Sort projects into your own groups, such as Work and Personal, and filter threads by group."
         }
         control={
           <Switch
