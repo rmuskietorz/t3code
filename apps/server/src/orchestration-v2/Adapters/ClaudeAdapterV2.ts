@@ -6001,7 +6001,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               providerSessionId: input.providerSessionId,
               providerThreadId: context.input.providerThread.id,
               providerTurnId: context.providerTurnId,
-              cause,
+              // Structured causes print as `[Object]`, hiding the CLI's own error.
+              cause: Cause.pretty(cause),
             });
           }
         });
