@@ -11,8 +11,8 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { readSplitViewHost } from "../../splitViewHost";
-import { SPLIT_VIEW_BUTTON_LABEL } from "./SplitViewButton";
+import { readSplitViewHost, useSplitViewActive } from "../../splitViewHost";
+import { CLOSE_SPLIT_PANE_LABEL, OPEN_SPLIT_VIEW_LABEL } from "./SplitViewButton";
 
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
@@ -57,6 +57,7 @@ export function SidebarThreadHeader({
   onClearSearch,
 }: SidebarThreadHeaderProps) {
   const splitViewHost = readSplitViewHost();
+  const splitViewActive = useSplitViewActive();
   const resultsVisible = isSearching && searchResultCount > 0;
   // Results shrink as the query narrows, so the active index can outrun the
   // list; pointing aria-activedescendant at a removed option strands the
@@ -112,10 +113,12 @@ export function SidebarThreadHeader({
       <div className="flex shrink-0 items-center">
         {splitViewHost ? (
           <SidebarHeaderIconButton
-            label={SPLIT_VIEW_BUTTON_LABEL}
-            onClick={() => splitViewHost.toggle()}
+            label={splitViewActive ? CLOSE_SPLIT_PANE_LABEL : OPEN_SPLIT_VIEW_LABEL}
+            onClick={() =>
+              splitViewActive ? splitViewHost.closeThisPane() : splitViewHost.toggle()
+            }
           >
-            <Columns2Icon />
+            {splitViewActive ? <XIcon /> : <Columns2Icon />}
           </SidebarHeaderIconButton>
         ) : null}
         {expansionMenu}

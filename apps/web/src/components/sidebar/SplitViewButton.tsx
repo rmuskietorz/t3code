@@ -1,15 +1,18 @@
-import { Columns2Icon } from "lucide-react";
+import { Columns2Icon, XIcon } from "lucide-react";
 
-import { readSplitViewHost } from "../../splitViewHost";
+import { readSplitViewHost, useSplitViewActive } from "../../splitViewHost";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
-export const SPLIT_VIEW_BUTTON_LABEL = "Toggle split view (Ctrl+Alt+S)";
+export const OPEN_SPLIT_VIEW_LABEL = "Open split view (Ctrl+Alt+S)";
+export const CLOSE_SPLIT_PANE_LABEL = "Close this half of the split view";
 
-/** The legacy sidebar's split view toggle, shown only inside a shell that provides it. */
+/** The legacy sidebar's split view control, shown only inside a shell that provides it. */
 export function SplitViewButton() {
   const host = readSplitViewHost();
+  const split = useSplitViewActive();
   if (host === null) return null;
+  const label = split ? CLOSE_SPLIT_PANE_LABEL : OPEN_SPLIT_VIEW_LABEL;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -17,14 +20,14 @@ export function SplitViewButton() {
           <Button
             size="icon-xs"
             variant="ghost-muted"
-            aria-label={SPLIT_VIEW_BUTTON_LABEL}
-            onClick={() => host.toggle()}
+            aria-label={label}
+            onClick={() => (split ? host.closeThisPane() : host.toggle())}
           />
         }
       >
-        <Columns2Icon className="size-3.5" />
+        {split ? <XIcon className="size-3.5" /> : <Columns2Icon className="size-3.5" />}
       </TooltipTrigger>
-      <TooltipPopup side="right">{SPLIT_VIEW_BUTTON_LABEL}</TooltipPopup>
+      <TooltipPopup side="right">{label}</TooltipPopup>
     </Tooltip>
   );
 }
