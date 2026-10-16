@@ -6,7 +6,9 @@ export type SidebarBulkExpansionAction =
   | "show-all-threads"
   | "show-fewer-threads"
   | "collapse-groups"
-  | "expand-groups";
+  | "expand-groups"
+  | "collapse-sections"
+  | "expand-sections";
 
 const handlers = new Set<(action: SidebarBulkExpansionAction) => void>();
 

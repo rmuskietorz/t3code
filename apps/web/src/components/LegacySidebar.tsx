@@ -172,7 +172,7 @@ import {
   CustomProjectGroupHeader,
   customProjectGroupDragId,
 } from "./sidebar/CustomProjectGroupHeader";
-import { SidebarExpansionMenu } from "./sidebar/SidebarExpansionMenu";
+import { SidebarExpansionMenu, sidebarExpansionMenuGroups } from "./sidebar/SidebarExpansionMenu";
 import {
   partitionIntoCustomProjectGroups,
   UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
@@ -3243,7 +3243,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               onThreadPreviewCountChange={handleThreadPreviewCountChange}
             />
             <SidebarExpansionMenu
-              showGroupActions={projectSections !== null}
+              groups={sidebarExpansionMenuGroups({
+                legacySidebar: true,
+                customProjectGroups: projectSections !== null,
+              })}
               onAction={handleBulkExpansion}
             />
             <Tooltip>
@@ -4022,6 +4025,10 @@ export default function LegacySidebar() {
         case "collapse-groups":
         case "expand-groups":
           setProjectGroupsCollapsed(projectSectionKeys, action === "collapse-groups");
+          return;
+        case "collapse-sections":
+        case "expand-sections":
+          // The new sidebar's shelves; this sidebar has none.
           return;
       }
     },

@@ -160,7 +160,12 @@ import {
   filterGroupedSidebarProjectScopeItems,
   resolveCustomGroupScope,
 } from "../sidebarCustomGroupScope";
+import {
+  type SidebarBulkExpansionAction,
+  useSidebarBulkExpansionHandler,
+} from "../sidebarBulkExpansion";
 import { UNGROUPED_CUSTOM_PROJECT_GROUP_ID } from "@t3tools/client-runtime/state/custom-project-groups";
+import { SidebarExpansionMenu, sidebarExpansionMenuGroups } from "./sidebar/SidebarExpansionMenu";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -2927,6 +2932,17 @@ export default function Sidebar() {
     () => setWorkingShelfExpanded((value) => !value),
     [setWorkingShelfExpanded],
   );
+  const handleBulkExpansion = useCallback(
+    (action: SidebarBulkExpansionAction) => {
+      if (action !== "collapse-sections" && action !== "expand-sections") return;
+      const expanded = action === "expand-sections";
+      setWorkingShelfExpanded(expanded);
+      setSnoozedShelfExpanded(expanded);
+      setSettledShelfExpanded(expanded);
+    },
+    [setSettledShelfExpanded, setSnoozedShelfExpanded, setWorkingShelfExpanded],
+  );
+  useSidebarBulkExpansionHandler(handleBulkExpansion);
   const visibleWorkingThreads = useMemo(() => {
     if (workingShelfExpanded) return workingThreads;
     if (routeThreadKey === null) return EMPTY_THREADS;
@@ -4755,6 +4771,16 @@ export default function Sidebar() {
             <SidebarThreadHeader
               searchFieldRef={headerSearchRef}
               hasProjects={projectGroups.length > 0}
+              expansionMenu={
+                <SidebarExpansionMenu
+                  groups={sidebarExpansionMenuGroups({
+                    legacySidebar: false,
+                    customProjectGroups: false,
+                  })}
+                  onAction={handleBulkExpansion}
+                  trigger={<SidebarHeaderIconButton label="Collapse or expand all sections" />}
+                />
+              }
               projectScope={
                 <Combobox
                   items={projectScopeItems}

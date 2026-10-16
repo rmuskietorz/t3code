@@ -126,21 +126,26 @@ cannot drag or move threads within it. Your saved order returns when you turn it
 
 ### Group projects
 
-In the legacy sidebar, turn on **Settings → General → Custom project groups** to sort projects
-into your own groups, such as Work and Personal. Add and name groups there, and give a group path
-rules to fill it automatically, one per line: `*` matches within a folder and `**` across folders,
-so `/var/www/*` collects every site under `/var/www`. Rules work for projects from any environment,
-including Windows paths such as `C:\Users\me\projects\**`.
+Turn on **Settings → General → Custom project groups** to sort projects into your own groups,
+such as Work and Personal. Add and name groups there, and give a group path rules to fill it
+automatically, one per line: `*` matches within a folder and `**` across folders, so `/var/www/*`
+collects every site under `/var/www`. Rules work for projects from any environment, including
+Windows paths such as `C:\Users\me\projects\**`.
 
-To place a project yourself, choose **Move to group** in its menu, or drag it onto a group while
-projects are sorted manually. A project you placed stays there even when a rule would put it
-elsewhere; **Use path rules** in the same menu hands it back to the rules. Projects that belong
-nowhere appear under **Ungrouped**. Drag a group's heading to reorder groups, and click it to
-collapse the group. Each device keeps its own groups.
+To place a project yourself, choose **Move to group** in its menu. A project you placed stays there
+even when a rule would put it elsewhere; **Use path rules** in the same menu hands it back to the
+rules. Projects that belong nowhere count as **Ungrouped**. Each device keeps its own groups.
 
-The **Collapse or expand all** button next to the project sort menu collapses or expands every
-project, shows every thread or only the preview, and folds all groups at once. The same actions are
-in the command palette.
+- **Sidebar:** the project filter lists projects under their groups. Pick a group to see the
+  threads of all its projects, or choose **Filter by group** in a thread's menu. Right-click a
+  project in the filter to move it. If the filtered group is deleted or loses its last project,
+  the sidebar returns to all projects and says why.
+- **Legacy sidebar:** projects appear under collapsible group headings. While projects are sorted
+  manually, drag a project onto a group to move it, and drag a heading to reorder groups.
+
+The **Collapse or expand all** button collapses or expands the Working, Snoozed, and Settled
+sections. In the legacy sidebar it collapses or expands every project, shows every thread or only
+the preview, and folds all groups at once. The same actions are in the command palette.
 
 ## Settle finished work
 

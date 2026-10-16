@@ -15,6 +15,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
+  /** Collapse or expand all shelves. */
+  expansionMenu?: ReactNode;
   projectScope: ReactNode;
   onNewProject: () => void;
   onNewThread: (event: ReactMouseEvent) => void;
@@ -35,6 +37,7 @@ export interface SidebarThreadHeaderProps {
 export function SidebarThreadHeader({
   searchFieldRef,
   hasProjects,
+  expansionMenu,
   projectScope,
   onNewProject,
   onNewThread,
@@ -104,6 +107,7 @@ export function SidebarThreadHeader({
         ) : null}
       </div>
       <div className="flex shrink-0 items-center">
+        {expansionMenu}
         {hasProjects ? (
           <>
             {projectScope}

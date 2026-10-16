@@ -134,10 +134,8 @@ import { useNewProject } from "../hooks/useNewProject";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useAgentSessionReimport } from "../hooks/useAgentSessionReimport";
-import {
-  requestSidebarBulkExpansion,
-  type SidebarBulkExpansionAction,
-} from "../sidebarBulkExpansion";
+import { requestSidebarBulkExpansion } from "../sidebarBulkExpansion";
+import { sidebarExpansionMenuGroups } from "./sidebar/SidebarExpansionMenu";
 import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
@@ -1984,57 +1982,26 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  // Only the legacy sidebar listens for these.
-  if (clientSettings.legacySidebarEnabled) {
-    const bulkExpansionItems: ReadonlyArray<{
-      action: SidebarBulkExpansionAction;
-      title: string;
-      collapse: boolean;
-    }> = [
-      { action: "collapse-projects", title: "Collapse all projects", collapse: true },
-      { action: "expand-projects", title: "Expand all projects", collapse: false },
-      { action: "show-all-threads", title: "Show all threads in the sidebar", collapse: false },
-      { action: "show-fewer-threads", title: "Show fewer threads in the sidebar", collapse: true },
-      ...(clientSettings.sidebarCustomProjectGroupsEnabled
-        ? [
-            {
-              action: "collapse-groups" as const,
-              title: "Collapse all project groups",
-              collapse: true,
-            },
-            {
-              action: "expand-groups" as const,
-              title: "Expand all project groups",
-              collapse: false,
-            },
-          ]
-        : []),
-    ];
-    for (const item of bulkExpansionItems) {
-      actionItems.push({
-        kind: "action",
-        value: `action:sidebar-${item.action}`,
-        searchTerms: [
-          "sidebar",
-          "collapse",
-          "expand",
-          "fold",
-          "unfold",
-          "all",
-          "projects",
-          "threads",
-        ],
-        title: item.title,
-        icon: item.collapse ? (
-          <ChevronsDownUpIcon className={ITEM_ICON_CLASS} />
-        ) : (
-          <ChevronsUpDownIcon className={ITEM_ICON_CLASS} />
-        ),
-        run: async () => {
-          requestSidebarBulkExpansion(item.action);
-        },
-      });
-    }
+  // Whichever sidebar is mounted handles these.
+  for (const entry of sidebarExpansionMenuGroups({
+    legacySidebar: clientSettings.legacySidebarEnabled,
+    customProjectGroups: clientSettings.sidebarCustomProjectGroupsEnabled,
+  }).flat()) {
+    const collapses = entry.action.startsWith("collapse") || entry.action === "show-fewer-threads";
+    actionItems.push({
+      kind: "action",
+      value: `action:sidebar-${entry.action}`,
+      searchTerms: ["sidebar", "collapse", "expand", "fold", "unfold", "all", "threads"],
+      title: `Sidebar: ${entry.label}`,
+      icon: collapses ? (
+        <ChevronsDownUpIcon className={ITEM_ICON_CLASS} />
+      ) : (
+        <ChevronsUpDownIcon className={ITEM_ICON_CLASS} />
+      ),
+      run: async () => {
+        requestSidebarBulkExpansion(entry.action);
+      },
+    });
   }
 
   actionItems.push({
