@@ -172,6 +172,7 @@ import {
   CustomProjectGroupHeader,
   customProjectGroupDragId,
 } from "./sidebar/CustomProjectGroupHeader";
+import { SidebarExpansionMenu } from "./sidebar/SidebarExpansionMenu";
 import {
   partitionIntoCustomProjectGroups,
   UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
@@ -182,6 +183,10 @@ import {
   useCustomProjectGroups,
   useCustomProjectGroupsEnabled,
 } from "~/hooks/useCustomProjectGroups";
+import {
+  type SidebarBulkExpansionAction,
+  useSidebarBulkExpansionHandler,
+} from "../sidebarBulkExpansion";
 import {
   SidebarContent,
   SidebarGroup,
@@ -3020,6 +3025,7 @@ interface SidebarProjectsContentProps {
   projectSections: ReadonlyArray<CustomProjectGroupSection<SidebarProjectSnapshot>> | null;
   projectGroupCollapsedById: Readonly<Record<string, boolean>>;
   toggleProjectGroupCollapsed: (groupKey: string) => void;
+  handleBulkExpansion: (action: SidebarBulkExpansionAction) => void;
 }
 
 const SidebarProjectsContent = memo(function SidebarProjectsContent(
@@ -3066,6 +3072,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     projectSections,
     projectGroupCollapsedById,
     toggleProjectGroupCollapsed,
+    handleBulkExpansion,
   } = props;
 
   const handleProjectSortOrderChange = useCallback(
@@ -3235,6 +3242,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               onThreadSortOrderChange={handleThreadSortOrderChange}
               onThreadPreviewCountChange={handleThreadPreviewCountChange}
             />
+            <SidebarExpansionMenu
+              showGroupActions={projectSections !== null}
+              onAction={handleBulkExpansion}
+            />
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -3281,6 +3292,7 @@ export default function LegacySidebar() {
   const projects = useProjects();
   const sidebarThreads = useThreadShells();
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
+  const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
   const projectGroupCollapsedById = useUiStateStore((store) => store.projectGroupCollapsedById);
   const setProjectGroupsCollapsed = useUiStateStore((store) => store.setProjectGroupsCollapsed);
   const customProjectGroupsEnabled = useCustomProjectGroupsEnabled();
@@ -3989,6 +4001,34 @@ export default function LegacySidebar() {
     });
   }, []);
 
+  const handleBulkExpansion = useCallback(
+    (action: SidebarBulkExpansionAction) => {
+      switch (action) {
+        case "collapse-projects":
+        case "expand-projects":
+          setProjectExpanded(
+            sortedProjects.flatMap(projectExpansionPreferenceKeys),
+            action === "expand-projects",
+          );
+          return;
+        case "show-all-threads":
+          setExpandedThreadListsByProject(
+            new Set(sortedProjects.map((project) => project.projectKey)),
+          );
+          return;
+        case "show-fewer-threads":
+          setExpandedThreadListsByProject(new Set());
+          return;
+        case "collapse-groups":
+        case "expand-groups":
+          setProjectGroupsCollapsed(projectSectionKeys, action === "collapse-groups");
+          return;
+      }
+    },
+    [projectSectionKeys, setProjectExpanded, setProjectGroupsCollapsed, sortedProjects],
+  );
+  useSidebarBulkExpansionHandler(handleBulkExpansion);
+
   return (
     <>
       {prewarmedSidebarThreadRefs.map((threadRef) => (
@@ -4037,6 +4077,7 @@ export default function LegacySidebar() {
         projectSections={projectSections}
         projectGroupCollapsedById={projectGroupCollapsedById}
         toggleProjectGroupCollapsed={toggleProjectGroupCollapsed}
+        handleBulkExpansion={handleBulkExpansion}
       />
       <SidebarChromeFooter />
     </>

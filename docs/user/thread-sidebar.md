@@ -124,6 +124,24 @@ device keeps its own choice.
 While this is on, the active list is ordered by when each thread last came back to you, so you
 cannot drag or move threads within it. Your saved order returns when you turn it off.
 
+### Group projects
+
+In the legacy sidebar, turn on **Settings → General → Custom project groups** to sort projects
+into your own groups, such as Work and Personal. Add and name groups there, and give a group path
+rules to fill it automatically, one per line: `*` matches within a folder and `**` across folders,
+so `/var/www/*` collects every site under `/var/www`. Rules work for projects from any environment,
+including Windows paths such as `C:\Users\me\projects\**`.
+
+To place a project yourself, choose **Move to group** in its menu, or drag it onto a group while
+projects are sorted manually. A project you placed stays there even when a rule would put it
+elsewhere; **Use path rules** in the same menu hands it back to the rules. Projects that belong
+nowhere appear under **Ungrouped**. Drag a group's heading to reorder groups, and click it to
+collapse the group. Each device keeps its own groups.
+
+The **Collapse or expand all** button next to the project sort menu collapses or expands every
+project, shows every thread or only the preview, and folds all groups at once. The same actions are
+in the command palette.
+
 ## Settle finished work
 
 Choose **Settle thread** from its menu to move finished work out of the active list
