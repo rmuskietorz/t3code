@@ -29,6 +29,7 @@ import {
   supportsSharedSettingsSync,
 } from "@t3tools/client-runtime/state/shared-settings";
 import { ensureLocalApi } from "~/localApi";
+import { clientSettingsFromStorageEvent } from "~/clientPersistenceStorage";
 import {
   getThemeDefinition,
   getThemePreviewSidebarArtwork,
@@ -85,6 +86,16 @@ function getClientSettingsSnapshot(): ClientSettings {
 function replaceClientSettingsSnapshot(settings: ClientSettings): void {
   clientSettingsSnapshot = settings;
   emitClientSettingsChange();
+}
+
+// Browser storage events only reach other documents, so this picks up what a
+// second tab or split view saved without echoing this document's own writes.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("storage", (event) => {
+    if (clientSettingsHydrationStatus !== "ready") return;
+    const settings = clientSettingsFromStorageEvent(event);
+    if (settings !== null) replaceClientSettingsSnapshot(settings);
+  });
 }
 
 function setClientSettingsHydrationStatus(nextStatus: ClientSettingsHydrationStatus): void {

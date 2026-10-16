@@ -142,3 +142,25 @@ describe("clientPersistenceStorage", () => {
     expect(readBrowserClientSettings()?.diffLayout).toBe("split");
   });
 });
+
+describe("clientSettingsFromStorageEvent", () => {
+  const key = "t3code:client-settings:v1";
+
+  it("decodes settings another window stored", async () => {
+    getTestWindow();
+    const { clientSettingsFromStorageEvent } = await import("./clientPersistenceStorage");
+    const settings = clientSettingsFromStorageEvent({
+      key,
+      newValue: JSON.stringify({ sidebarCustomProjectGroupsEnabled: true }),
+    });
+    expect(settings?.sidebarCustomProjectGroupsEnabled).toBe(true);
+  });
+
+  it("ignores other keys, removals, and unreadable values", async () => {
+    getTestWindow();
+    const { clientSettingsFromStorageEvent } = await import("./clientPersistenceStorage");
+    expect(clientSettingsFromStorageEvent({ key: "other", newValue: "{}" })).toBeNull();
+    expect(clientSettingsFromStorageEvent({ key, newValue: null })).toBeNull();
+    expect(clientSettingsFromStorageEvent({ key, newValue: "{" })).toBeNull();
+  });
+});

@@ -17,6 +17,7 @@ import {
   setSidebarProjectScopeKey,
   setThreadChangedFilesExpanded,
   type UiState,
+  uiStateFromStorageEvent,
 } from "./uiStateStore";
 
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
@@ -371,6 +372,17 @@ describe("uiStateStore persistence", () => {
     ) as PersistedUiState;
 
     expect(parsePersistedState(persisted).projectGroupCollapsedById).toEqual({ work: true });
+  });
+
+  it("adopts UI state another window stored and ignores other keys", () => {
+    persistState(makeUiState({ projectGroupCollapsedById: { work: true } }));
+    const newValue = localStorageStub.getItem(PERSISTED_STATE_KEY);
+
+    expect(
+      uiStateFromStorageEvent({ key: PERSISTED_STATE_KEY, newValue })?.projectGroupCollapsedById,
+    ).toEqual({ work: true });
+    expect(uiStateFromStorageEvent({ key: "other", newValue })).toBeNull();
+    expect(uiStateFromStorageEvent({ key: PERSISTED_STATE_KEY, newValue: "{" })).toBeNull();
   });
 
   it("drops the temporary expanded-only migration fallback when rewriting state", () => {

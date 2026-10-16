@@ -483,6 +483,31 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
 
 useUiStateStore.subscribe((state) => debouncedPersistState.maybeExecute(state));
 
+/**
+ * UI state another document of this origin stored, such as the other half of a
+ * split window; `null` for unrelated or unreadable changes.
+ */
+export function uiStateFromStorageEvent(
+  event: Pick<StorageEvent, "key" | "newValue">,
+): UiState | null {
+  if (event.key !== PERSISTED_STATE_KEY || event.newValue === null) return null;
+  try {
+    return parsePersistedState(JSON.parse(event.newValue) as PersistedUiState);
+  } catch (error) {
+    console.warn("Ignoring unreadable UI state written by another window", error);
+    return null;
+  }
+}
+
+// Re-persisting the adopted state writes the same value, which raises no new
+// storage event, so two windows cannot echo changes back and forth.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("storage", (event) => {
+    const next = uiStateFromStorageEvent(event);
+    if (next !== null) useUiStateStore.setState(next);
+  });
+}
+
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("beforeunload", () => {
     debouncedPersistState.flush();
