@@ -93,6 +93,7 @@ import {
 } from "./useScopedSettings";
 import { useScopedModelDisabledReason } from "./useScopedModelAvailability";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { CustomProjectGroupsSettings } from "./CustomProjectGroupsSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
@@ -577,6 +578,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.sidebarProjectSortOrder !== DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder
         ? ["Project order"]
         : []),
+      ...(settings.sidebarCustomProjectGroupsEnabled !==
+      DEFAULT_UNIFIED_SETTINGS.sidebarCustomProjectGroupsEnabled
+        ? ["Custom project groups"]
+        : []),
       ...(settings.sidebarWorkingShelfEnabled !==
       DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled
         ? ["Working section"]
@@ -737,6 +742,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.snoozeLimitedThreads,
       settings.sidebarProjectGroupingMode,
       settings.sidebarProjectSortOrder,
+      settings.sidebarCustomProjectGroupsEnabled,
       settings.sidebarWorkingShelfEnabled,
       settings.sidebarThreadPreviewCount,
       settings.showSkillsInSlashMenu,
@@ -831,6 +837,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
+      sidebarCustomProjectGroupsEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarCustomProjectGroupsEnabled,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
@@ -2481,6 +2488,7 @@ export function GeneralSettingsPanel() {
             ) : null}
           </>
         ) : null}
+        <CustomProjectGroupsSettings />
       </SettingsSection>
 
       <SettingsSection id="behavior" title="Behavior">

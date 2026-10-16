@@ -299,6 +299,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["combine matching repositories environments sidebar"],
   },
   {
+    id: "custom-project-groups",
+    title: "Custom project groups",
+    to: "/settings/general",
+    searchTerms: ["sidebar folders work personal sections path rules assign"],
+  },
+  {
     id: "project-order",
     title: "Project order",
     to: "/settings/general",

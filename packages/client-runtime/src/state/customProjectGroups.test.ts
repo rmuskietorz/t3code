@@ -7,6 +7,7 @@ import {
   makeCustomProjectGroupResolver,
   moveCustomProjectGroup,
   partitionIntoCustomProjectGroups,
+  UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
   type CustomProjectGroupSettings,
 } from "./customProjectGroups.ts";
 
@@ -66,6 +67,17 @@ describe("makeCustomProjectGroupResolver", () => {
     );
     expect(resolver.resolve([member("wsl", "/var/www/PimCore")])).toBe("personal");
     expect(resolver.resolve([member("wsl", "/var/www/Tankivo")])).toBe("work");
+  });
+
+  it("keeps a project pinned to ungrouped even when a rule matches", () => {
+    const resolver = makeCustomProjectGroupResolver(
+      settings({
+        sidebarCustomProjectGroupAssignments: {
+          "wsl:/var/www/PimCore": UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
+        },
+      }),
+    );
+    expect(resolver.resolve([member("wsl", "/var/www/PimCore")])).toBeNull();
   });
 
   it("uses the first matching group in sidebar order when rules overlap", () => {

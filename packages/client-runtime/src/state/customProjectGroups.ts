@@ -7,6 +7,12 @@ import { isUncPath, isWindowsDrivePath } from "@t3tools/shared/path";
 
 import { normalizeProjectPathForComparison } from "./projects.ts";
 
+/**
+ * Assignment value that keeps a project out of every group even when a path
+ * rule matches it; stored group ids are random UUIDs, so it cannot collide.
+ */
+export const UNGROUPED_CUSTOM_PROJECT_GROUP_ID = "ungrouped";
+
 export type CustomProjectGroupSettings = Pick<
   ClientSettings,
   "sidebarCustomProjectGroups" | "sidebarCustomProjectGroupAssignments"
@@ -92,6 +98,7 @@ export function makeCustomProjectGroupResolver(
     resolve: (members) => {
       for (const member of members) {
         const assigned = settings.sidebarCustomProjectGroupAssignments[member.physicalProjectKey];
+        if (assigned === UNGROUPED_CUSTOM_PROJECT_GROUP_ID) return null;
         if (assigned !== undefined && groupIds.has(assigned)) return assigned;
       }
       for (const rule of rules) {
@@ -131,7 +138,10 @@ export function partitionIntoCustomProjectGroups<Item>(
   return sections;
 }
 
-/** Assigns every member of a row; `null` returns the row to its path rules. */
+/**
+ * Assigns every member of a row; `null` returns the row to its path rules and
+ * `UNGROUPED_CUSTOM_PROJECT_GROUP_ID` pins it to "Ungrouped".
+ */
 export function assignCustomProjectGroup(
   assignments: CustomProjectGroupSettings["sidebarCustomProjectGroupAssignments"],
   physicalProjectKeys: ReadonlyArray<string>,

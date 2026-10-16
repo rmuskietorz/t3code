@@ -20,6 +20,7 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 
 export interface PersistedUiState {
   projectExpandedById?: Record<string, boolean>;
+  projectGroupCollapsedById?: Record<string, boolean>;
   projectOrder?: string[];
   threadLastVisitedAtById?: Record<string, string>;
   collapsedProjectCwds?: string[];
@@ -34,6 +35,8 @@ export interface PersistedUiState {
 
 export interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
+  /** Custom sidebar project group id to collapsed; absent means expanded. */
+  projectGroupCollapsedById: Record<string, boolean>;
   projectOrder: string[];
   sidebarProjectScopeKey: string | null;
 }
@@ -56,6 +59,7 @@ export interface UiState
 
 const initialState: UiState = {
   projectExpandedById: {},
+  projectGroupCollapsedById: {},
   projectOrder: [],
   sidebarProjectScopeKey: null,
   threadLastVisitedAtById: {},
@@ -143,6 +147,7 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
 
   return {
     projectExpandedById,
+    projectGroupCollapsedById: sanitizeBooleanRecord(parsed.projectGroupCollapsedById),
     projectOrder,
     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
     threadChangedFilesExpandedById:
@@ -221,6 +226,7 @@ export function persistState(state: UiState): void {
       PERSISTED_STATE_KEY,
       JSON.stringify({
         projectExpandedById,
+        projectGroupCollapsedById: state.projectGroupCollapsedById,
         projectOrder: state.projectOrder,
         threadLastVisitedAtById: state.threadLastVisitedAtById,
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
@@ -373,6 +379,25 @@ export function setProjectExpanded(
   };
 }
 
+export function setProjectGroupsCollapsed(
+  state: UiState,
+  groupIds: readonly string[],
+  collapsed: boolean,
+): UiState {
+  const changed = groupIds.filter(
+    (groupId) => (state.projectGroupCollapsedById[groupId] ?? false) !== collapsed,
+  );
+  if (changed.length === 0) {
+    return state;
+  }
+  const projectGroupCollapsedById = { ...state.projectGroupCollapsedById };
+  for (const groupId of changed) {
+    if (collapsed) projectGroupCollapsedById[groupId] = true;
+    else delete projectGroupCollapsedById[groupId];
+  }
+  return { ...state, projectGroupCollapsedById };
+}
+
 export function reorderProjects(
   state: UiState,
   currentProjectOrder: readonly string[],
@@ -425,6 +450,7 @@ interface UiStateStore extends UiState {
   setSidebarProjectScopeKey: (projectKey: string | null) => void;
   setPullRequestMergeMethod: (method: PullRequestMergeMethod) => void;
   setProjectExpanded: (projectIds: string | readonly string[], expanded: boolean) => void;
+  setProjectGroupsCollapsed: (groupIds: readonly string[], collapsed: boolean) => void;
   reorderProjects: (
     currentProjectOrder: readonly string[],
     draggedProjectIds: readonly string[],
@@ -447,6 +473,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   setPullRequestMergeMethod: (method) => set((state) => setPullRequestMergeMethod(state, method)),
   setProjectExpanded: (projectIds, expanded) =>
     set((state) => setProjectExpanded(state, projectIds, expanded)),
+  setProjectGroupsCollapsed: (groupIds, collapsed) =>
+    set((state) => setProjectGroupsCollapsed(state, groupIds, collapsed)),
   reorderProjects: (currentProjectOrder, draggedProjectIds, targetProjectIds) =>
     set((state) =>
       reorderProjects(state, currentProjectOrder, draggedProjectIds, targetProjectIds),

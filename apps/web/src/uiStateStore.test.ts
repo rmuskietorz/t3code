@@ -13,6 +13,7 @@ import {
   resolveProjectExpanded,
   setDefaultAdvertisedEndpointKey,
   setProjectExpanded,
+  setProjectGroupsCollapsed,
   setSidebarProjectScopeKey,
   setThreadChangedFilesExpanded,
   type UiState,
@@ -21,6 +22,7 @@ import {
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     projectExpandedById: {},
+    projectGroupCollapsedById: {},
     projectOrder: [],
     sidebarProjectScopeKey: null,
     threadLastVisitedAtById: {},
@@ -82,6 +84,15 @@ describe("uiStateStore pure functions", () => {
       "environment-b:/repo": false,
     });
     expect(setProjectExpanded(next, keys, false)).toBe(next);
+  });
+
+  it("collapses and expands custom project groups together", () => {
+    const collapsed = setProjectGroupsCollapsed(makeUiState(), ["work", "personal"], true);
+    expect(collapsed.projectGroupCollapsedById).toEqual({ work: true, personal: true });
+    expect(setProjectGroupsCollapsed(collapsed, ["work"], true)).toBe(collapsed);
+    expect(setProjectGroupsCollapsed(collapsed, ["work"], false).projectGroupCollapsedById).toEqual(
+      { personal: true },
+    );
   });
 
   it("reorders from the current atom-derived project order", () => {
@@ -196,6 +207,7 @@ describe("parsePersistedState", () => {
       projectExpandedById: {
         logical: false,
       },
+      projectGroupCollapsedById: {},
       projectOrder: ["physical-b", "physical-a"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
@@ -318,6 +330,7 @@ describe("uiStateStore persistence", () => {
       projectExpandedById: {
         logical: false,
       },
+      projectGroupCollapsedById: {},
       projectOrder: ["physical-b", "physical-a"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
@@ -348,6 +361,16 @@ describe("uiStateStore persistence", () => {
     expect(parsePersistedState(persisted).sidebarProjectScopeKey).toBe(
       "github.com/pingdotgg/t3code",
     );
+  });
+
+  it("restores collapsed custom project groups across reloads", () => {
+    persistState(makeUiState({ projectGroupCollapsedById: { work: true } }));
+
+    const persisted = JSON.parse(
+      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+    ) as PersistedUiState;
+
+    expect(parsePersistedState(persisted).projectGroupCollapsedById).toEqual({ work: true });
   });
 
   it("drops the temporary expanded-only migration fallback when rewriting state", () => {

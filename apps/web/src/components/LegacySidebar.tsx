@@ -169,6 +169,20 @@ import {
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
+  CustomProjectGroupHeader,
+  customProjectGroupDragId,
+} from "./sidebar/CustomProjectGroupHeader";
+import {
+  partitionIntoCustomProjectGroups,
+  UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
+  type CustomProjectGroupSection,
+} from "@t3tools/client-runtime/state/custom-project-groups";
+import {
+  useCustomProjectGroupActions,
+  useCustomProjectGroups,
+  useCustomProjectGroupsEnabled,
+} from "~/hooks/useCustomProjectGroups";
+import {
   SidebarContent,
   SidebarGroup,
   SidebarMenu,
@@ -1203,6 +1217,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const clearPendingFileDrop = useSidebarPendingFileDropStore((s) => s.clearPendingFileDrop);
   const { isMobile, setOpenMobile } = useSidebar();
   const setProjectExpanded = useUiStateStore((state) => state.setProjectExpanded);
+  const customProjectGroupsEnabled = useCustomProjectGroupsEnabled();
+  const customProjectGroups = useCustomProjectGroups();
+  const customProjectGroupAssignments = useClientSettings(
+    (settings) => settings.sidebarCustomProjectGroupAssignments,
+  );
+  const customProjectGroupActions = useCustomProjectGroupActions();
   const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -1757,6 +1777,38 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           };
         };
 
+        const memberKeys = project.memberProjects.map((member) => member.physicalProjectKey);
+        const currentAssignment = customProjectGroupAssignments[memberKeys[0] ?? ""] ?? null;
+        const moveToGroupTargets = [
+          ...customProjectGroups.map((group) => ({ id: group.id, label: group.name })),
+          { id: UNGROUPED_CUSTOM_PROJECT_GROUP_ID, label: "No group" },
+        ];
+        for (const target of moveToGroupTargets) {
+          actionHandlers.set(`move-to-group:${target.id}`, () => {
+            void customProjectGroupActions.assignProjects(memberKeys, target.id);
+          });
+        }
+        actionHandlers.set("move-to-group:rules", () => {
+          void customProjectGroupActions.assignProjects(memberKeys, null);
+        });
+        const moveToGroupItem: ContextMenuItem<string> = {
+          id: "move-to-group:submenu",
+          label: "Move to group",
+          children: [
+            ...moveToGroupTargets.map((target) => ({
+              id: `move-to-group:${target.id}`,
+              label: target.label,
+              ...(currentAssignment === target.id ? { checked: true } : {}),
+            })),
+            {
+              id: "move-to-group:rules",
+              label: "Use path rules",
+              separatorBefore: true,
+              ...(currentAssignment === null ? { checked: true } : {}),
+            },
+          ],
+        };
+
         actionHandlers.set("project-settings", () => {
           if (isMobile) setOpenMobile(false);
           void router.navigate({
@@ -1772,6 +1824,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                 !readEnvironmentScope(member.environmentId, AuthOrchestrationOperateScope),
             }),
             buildTargetedItem("grouping", "Group into..."),
+            ...(customProjectGroupsEnabled ? [moveToGroupItem] : []),
             buildTargetedItem("copy-path", "Copy Path"),
             { id: "project-settings", label: "Project settings", icon: "settings" },
             buildTargetedItem("delete", "Remove", {
@@ -1795,6 +1848,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     },
     [
       copyPathToClipboard,
+      customProjectGroupActions,
+      customProjectGroupAssignments,
+      customProjectGroups,
+      customProjectGroupsEnabled,
       handleRemoveProject,
       isMobile,
       openProjectGroupingDialog,
@@ -2959,6 +3016,10 @@ interface SidebarProjectsContentProps {
   suppressProjectClickForContextMenuRef: React.RefObject<boolean>;
   attachProjectListAutoAnimateRef: (node: HTMLElement | null) => void;
   projectsLength: number;
+  /** `null` while custom project groups are off. */
+  projectSections: ReadonlyArray<CustomProjectGroupSection<SidebarProjectSnapshot>> | null;
+  projectGroupCollapsedById: Readonly<Record<string, boolean>>;
+  toggleProjectGroupCollapsed: (groupKey: string) => void;
 }
 
 const SidebarProjectsContent = memo(function SidebarProjectsContent(
@@ -3002,6 +3063,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     suppressProjectClickForContextMenuRef,
     attachProjectListAutoAnimateRef,
     projectsLength,
+    projectSections,
+    projectGroupCollapsedById,
+    toggleProjectGroupCollapsed,
   } = props;
 
   const handleProjectSortOrderChange = useCallback(
@@ -3022,6 +3086,100 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     },
     [updateSettings],
   );
+
+  const renderProjects = (projects: readonly SidebarProjectSnapshot[]) =>
+    isManualProjectSorting ? (
+      <SortableContext
+        items={projects.map((project) => project.projectKey)}
+        strategy={verticalListSortingStrategy}
+      >
+        {projects.map((project) => (
+          <SortableProjectItem key={project.projectKey} projectId={project.projectKey}>
+            {(dragHandleProps) => (
+              <SidebarProjectItem
+                project={project}
+                isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
+                activeRouteThreadKey={
+                  activeRouteProjectKey === project.projectKey ? routeThreadKey : null
+                }
+                openPullRequestsInRightPanel={openPullRequestsInRightPanel}
+                newThreadShortcutLabel={newThreadShortcutLabel}
+                handleNewThread={handleNewThread}
+                archiveThread={archiveThread}
+                deleteThread={deleteThread}
+                markThreadUnread={markThreadUnread}
+                threadJumpLabelByKey={threadJumpLabelByKey}
+                attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+                expandThreadListForProject={expandThreadListForProject}
+                collapseThreadListForProject={collapseThreadListForProject}
+                dragInProgressRef={dragInProgressRef}
+                suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+                suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
+                isManualProjectSorting={isManualProjectSorting}
+                dragHandleProps={dragHandleProps}
+              />
+            )}
+          </SortableProjectItem>
+        ))}
+      </SortableContext>
+    ) : (
+      projects.map((project) => (
+        <SidebarProjectListRow
+          key={project.projectKey}
+          project={project}
+          isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
+          activeRouteThreadKey={
+            activeRouteProjectKey === project.projectKey ? routeThreadKey : null
+          }
+          openPullRequestsInRightPanel={openPullRequestsInRightPanel}
+          newThreadShortcutLabel={newThreadShortcutLabel}
+          handleNewThread={handleNewThread}
+          archiveThread={archiveThread}
+          deleteThread={deleteThread}
+          markThreadUnread={markThreadUnread}
+          threadJumpLabelByKey={threadJumpLabelByKey}
+          attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+          expandThreadListForProject={expandThreadListForProject}
+          collapseThreadListForProject={collapseThreadListForProject}
+          dragInProgressRef={dragInProgressRef}
+          suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+          suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
+          isManualProjectSorting={isManualProjectSorting}
+          dragHandleProps={null}
+        />
+      ))
+    );
+
+  const renderProjectSections = () => {
+    if (projectSections === null) return renderProjects(sortedProjects);
+    const sectionKeys = projectSections.map(
+      (section) => section.group?.id ?? UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
+    );
+    return (
+      <SortableContext
+        items={sectionKeys.map(customProjectGroupDragId)}
+        strategy={verticalListSortingStrategy}
+      >
+        {projectSections.map((section, index) => {
+          const groupKey = sectionKeys[index]!;
+          const collapsed = projectGroupCollapsedById[groupKey] === true;
+          return (
+            <React.Fragment key={groupKey}>
+              <CustomProjectGroupHeader
+                group={section.group}
+                groupKey={groupKey}
+                projectCount={section.items.length}
+                collapsed={collapsed}
+                onToggleCollapsed={() => toggleProjectGroupCollapsed(groupKey)}
+                sortable={isManualProjectSorting}
+              />
+              {collapsed ? null : renderProjects(section.items)}
+            </React.Fragment>
+          );
+        })}
+      </SortableContext>
+    );
+  };
 
   return (
     <SidebarContent
@@ -3105,72 +3263,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             onDragEnd={handleProjectDragEnd}
             onDragCancel={handleProjectDragCancel}
           >
-            <SidebarMenu>
-              <SortableContext
-                items={sortedProjects.map((project) => project.projectKey)}
-                strategy={verticalListSortingStrategy}
-              >
-                {sortedProjects.map((project) => (
-                  <SortableProjectItem key={project.projectKey} projectId={project.projectKey}>
-                    {(dragHandleProps) => (
-                      <SidebarProjectItem
-                        project={project}
-                        isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
-                        activeRouteThreadKey={
-                          activeRouteProjectKey === project.projectKey ? routeThreadKey : null
-                        }
-                        openPullRequestsInRightPanel={openPullRequestsInRightPanel}
-                        newThreadShortcutLabel={newThreadShortcutLabel}
-                        handleNewThread={handleNewThread}
-                        archiveThread={archiveThread}
-                        deleteThread={deleteThread}
-                        markThreadUnread={markThreadUnread}
-                        threadJumpLabelByKey={threadJumpLabelByKey}
-                        attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-                        expandThreadListForProject={expandThreadListForProject}
-                        collapseThreadListForProject={collapseThreadListForProject}
-                        dragInProgressRef={dragInProgressRef}
-                        suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-                        suppressProjectClickForContextMenuRef={
-                          suppressProjectClickForContextMenuRef
-                        }
-                        isManualProjectSorting={isManualProjectSorting}
-                        dragHandleProps={dragHandleProps}
-                      />
-                    )}
-                  </SortableProjectItem>
-                ))}
-              </SortableContext>
-            </SidebarMenu>
+            <SidebarMenu>{renderProjectSections()}</SidebarMenu>
           </DndContext>
         ) : (
-          <SidebarMenu ref={attachProjectListAutoAnimateRef}>
-            {sortedProjects.map((project) => (
-              <SidebarProjectListRow
-                key={project.projectKey}
-                project={project}
-                isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
-                activeRouteThreadKey={
-                  activeRouteProjectKey === project.projectKey ? routeThreadKey : null
-                }
-                openPullRequestsInRightPanel={openPullRequestsInRightPanel}
-                newThreadShortcutLabel={newThreadShortcutLabel}
-                handleNewThread={handleNewThread}
-                archiveThread={archiveThread}
-                deleteThread={deleteThread}
-                markThreadUnread={markThreadUnread}
-                threadJumpLabelByKey={threadJumpLabelByKey}
-                attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-                expandThreadListForProject={expandThreadListForProject}
-                collapseThreadListForProject={collapseThreadListForProject}
-                dragInProgressRef={dragInProgressRef}
-                suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-                suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
-                isManualProjectSorting={isManualProjectSorting}
-                dragHandleProps={null}
-              />
-            ))}
-          </SidebarMenu>
+          <SidebarMenu ref={attachProjectListAutoAnimateRef}>{renderProjectSections()}</SidebarMenu>
         )}
 
         {projectsLength === 0 && (
@@ -3185,6 +3281,14 @@ export default function LegacySidebar() {
   const projects = useProjects();
   const sidebarThreads = useThreadShells();
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
+  const projectGroupCollapsedById = useUiStateStore((store) => store.projectGroupCollapsedById);
+  const setProjectGroupsCollapsed = useUiStateStore((store) => store.setProjectGroupsCollapsed);
+  const customProjectGroupsEnabled = useCustomProjectGroupsEnabled();
+  const customProjectGroups = useCustomProjectGroups();
+  const customProjectGroupAssignments = useClientSettings(
+    (settings) => settings.sidebarCustomProjectGroupAssignments,
+  );
+  const customProjectGroupActions = useCustomProjectGroupActions();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
   const navigate = useNavigate();
@@ -3404,27 +3508,6 @@ export default function LegacySidebar() {
     return closestCorners(args);
   }, []);
 
-  const handleProjectDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      if (sidebarProjectSortOrder !== "manual") {
-        dragInProgressRef.current = false;
-        return;
-      }
-      dragInProgressRef.current = false;
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
-      const activeProject = sidebarProjects.find((project) => project.projectKey === active.id);
-      const overProject = sidebarProjects.find((project) => project.projectKey === over.id);
-      if (!activeProject || !overProject) return;
-      const activeMemberKeys = activeProject.memberProjects.map(
-        (member) => member.physicalProjectKey,
-      );
-      const overMemberKeys = overProject.memberProjects.map((member) => member.physicalProjectKey);
-      reorderProjects(orderedProjects.map(getProjectOrderKey), activeMemberKeys, overMemberKeys);
-    },
-    [orderedProjects, sidebarProjectSortOrder, reorderProjects, sidebarProjects],
-  );
-
   const handleProjectDragStart = useCallback(
     (_event: DragStartEvent) => {
       if (sidebarProjectSortOrder !== "manual") {
@@ -3494,9 +3577,104 @@ export default function LegacySidebar() {
     visibleThreads,
   ]);
   const isManualProjectSorting = sidebarProjectSortOrder === "manual";
+  const projectSections = useMemo(
+    () =>
+      customProjectGroupsEnabled
+        ? partitionIntoCustomProjectGroups(sortedProjects, (project) => project.memberProjects, {
+            sidebarCustomProjectGroups: customProjectGroups,
+            sidebarCustomProjectGroupAssignments: customProjectGroupAssignments,
+          })
+        : null,
+    [
+      customProjectGroupAssignments,
+      customProjectGroups,
+      customProjectGroupsEnabled,
+      sortedProjects,
+    ],
+  );
+  const projectSectionKeys = useMemo(
+    () =>
+      projectSections?.map((section) => section.group?.id ?? UNGROUPED_CUSTOM_PROJECT_GROUP_ID) ??
+      [],
+    [projectSections],
+  );
+  const projectSectionKeyByProjectKey = useMemo(() => {
+    const next = new Map<string, string>();
+    projectSections?.forEach((section, index) => {
+      for (const project of section.items) next.set(project.projectKey, projectSectionKeys[index]!);
+    });
+    return next;
+  }, [projectSectionKeys, projectSections]);
+  // Rows in collapsed groups are hidden, so thread jump hints skip them too.
+  const visibleSortedProjects = useMemo(
+    () =>
+      projectSections === null
+        ? sortedProjects
+        : projectSections.flatMap((section, index) =>
+            projectGroupCollapsedById[projectSectionKeys[index]!] === true ? [] : section.items,
+          ),
+    [projectGroupCollapsedById, projectSectionKeys, projectSections, sortedProjects],
+  );
+  const toggleProjectGroupCollapsed = useCallback(
+    (groupKey: string) =>
+      setProjectGroupsCollapsed([groupKey], projectGroupCollapsedById[groupKey] !== true),
+    [projectGroupCollapsedById, setProjectGroupsCollapsed],
+  );
+  const handleProjectDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (sidebarProjectSortOrder !== "manual") {
+        dragInProgressRef.current = false;
+        return;
+      }
+      dragInProgressRef.current = false;
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const groupKeyOfHeader = (id: string | number) =>
+        projectSectionKeys.find((key) => customProjectGroupDragId(key) === id) ?? null;
+      const activeGroupKey = groupKeyOfHeader(active.id);
+      const overGroupKey = groupKeyOfHeader(over.id);
+      if (activeGroupKey !== null) {
+        const targetGroupKey = overGroupKey ?? projectSectionKeyByProjectKey.get(String(over.id));
+        if (targetGroupKey !== undefined && targetGroupKey !== UNGROUPED_CUSTOM_PROJECT_GROUP_ID) {
+          void customProjectGroupActions.moveGroup(activeGroupKey, targetGroupKey);
+        }
+        return;
+      }
+      const activeProject = sidebarProjects.find((project) => project.projectKey === active.id);
+      if (!activeProject) return;
+      const activeMemberKeys = activeProject.memberProjects.map(
+        (member) => member.physicalProjectKey,
+      );
+      if (overGroupKey !== null) {
+        void customProjectGroupActions.assignProjects(activeMemberKeys, overGroupKey);
+        return;
+      }
+      const overProject = sidebarProjects.find((project) => project.projectKey === over.id);
+      if (!overProject) return;
+      const overSectionKey = projectSectionKeyByProjectKey.get(overProject.projectKey);
+      if (
+        overSectionKey !== undefined &&
+        overSectionKey !== projectSectionKeyByProjectKey.get(activeProject.projectKey)
+      ) {
+        void customProjectGroupActions.assignProjects(activeMemberKeys, overSectionKey);
+      }
+      const overMemberKeys = overProject.memberProjects.map((member) => member.physicalProjectKey);
+      reorderProjects(orderedProjects.map(getProjectOrderKey), activeMemberKeys, overMemberKeys);
+    },
+    [
+      customProjectGroupActions,
+      orderedProjects,
+      projectSectionKeyByProjectKey,
+      projectSectionKeys,
+      sidebarProjectSortOrder,
+      reorderProjects,
+      sidebarProjects,
+    ],
+  );
+
   const visibleSidebarThreadKeys = useMemo(
     () =>
-      sortedProjects.flatMap((project) => {
+      visibleSortedProjects.flatMap((project) => {
         const projectThreads = sortThreads(
           (threadsByProjectKey.get(project.projectKey) ?? []).filter(
             (thread) => thread.archivedAt === null,
@@ -3537,7 +3715,7 @@ export default function LegacySidebar() {
       expandedThreadListsByProject,
       projectExpandedById,
       routeThreadKey,
-      sortedProjects,
+      visibleSortedProjects,
       threadsByProjectKey,
     ],
   );
@@ -3856,6 +4034,9 @@ export default function LegacySidebar() {
         suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
         attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
         projectsLength={projects.length}
+        projectSections={projectSections}
+        projectGroupCollapsedById={projectGroupCollapsedById}
+        toggleProjectGroupCollapsed={toggleProjectGroupCollapsed}
       />
       <SidebarChromeFooter />
     </>
