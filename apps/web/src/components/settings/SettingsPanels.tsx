@@ -29,6 +29,8 @@ import {
   type ChatWidth,
   type DiffLayout,
   type EnvironmentIdentificationMode,
+  MAX_AGENT_SESSION_IMPORT_MAX_SESSIONS,
+  MAX_AGENT_SESSION_IMPORT_WINDOW_DAYS,
   MAX_APPEARANCE_CONTRAST,
   MAX_CODE_FONT_SIZE,
   MAX_GLASS_OPACITY,
@@ -37,6 +39,8 @@ import {
   MAX_PROMPT_FONT_SIZE,
   MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   MAX_TERMINAL_FONT_SIZE,
+  MIN_AGENT_SESSION_IMPORT_MAX_SESSIONS,
+  MIN_AGENT_SESSION_IMPORT_WINDOW_DAYS,
   MIN_CODE_FONT_SIZE,
   MIN_APPEARANCE_CONTRAST,
   MIN_GLASS_OPACITY,
@@ -645,6 +649,14 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
+      ...(settings.agentSessionImportWindowDays !==
+      DEFAULT_UNIFIED_SETTINGS.agentSessionImportWindowDays
+        ? ["Session import window"]
+        : []),
+      ...(settings.agentSessionImportMaxSessions !==
+      DEFAULT_UNIFIED_SETTINGS.agentSessionImportMaxSessions
+        ? ["Sessions imported per project"]
+        : []),
       ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
         ? ["Unpin confirmation"]
         : []),
@@ -686,6 +698,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sendShortcut,
       settings.followUpBehavior,
       settings.addProjectBaseDirectory,
+      settings.agentSessionImportWindowDays,
+      settings.agentSessionImportMaxSessions,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
       settings.diffFilesCollapsed,
@@ -825,6 +839,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
+      agentSessionImportWindowDays: DEFAULT_UNIFIED_SETTINGS.agentSessionImportWindowDays,
+      agentSessionImportMaxSessions: DEFAULT_UNIFIED_SETTINGS.agentSessionImportMaxSessions,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
@@ -2003,12 +2019,18 @@ function FontFamilySettingsRow({
 
 const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays ?? 3;
 
-function AutoSettleDaysInput({
+function BoundedIntegerInput({
   value,
+  min,
+  max,
   onCommit,
+  "aria-label": ariaLabel,
 }: {
   value: number;
-  onCommit: (days: number) => void;
+  min: number;
+  max: number;
+  onCommit: (value: number) => void;
+  "aria-label": string;
 }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => {
@@ -2019,23 +2041,19 @@ function AutoSettleDaysInput({
     <Input
       size="sm"
       type="number"
-      min={MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
-      max={MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
+      min={min}
+      max={max}
       className="w-full sm:w-24"
       value={draft}
       onChange={(event) => {
         setDraft(event.target.value);
         const parsed = Number(event.target.value);
-        if (
-          Number.isInteger(parsed) &&
-          parsed >= MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS &&
-          parsed <= MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS
-        ) {
+        if (Number.isInteger(parsed) && parsed >= min && parsed <= max) {
           onCommit(parsed);
         }
       }}
       onBlur={() => setDraft(String(value))}
-      aria-label="Days of inactivity before auto-settle"
+      aria-label={ariaLabel}
     />
   );
 }
@@ -2422,9 +2440,12 @@ export function GeneralSettingsPanel() {
                 title={searchableSetting("days-before-auto-settle").title}
                 description="Any new activity un-settles a thread automatically."
                 control={
-                  <AutoSettleDaysInput
+                  <BoundedIntegerInput
                     value={settings.sidebarAutoSettleAfterDays}
+                    min={MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
+                    max={MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
                     onCommit={(days) => updateSettings({ sidebarAutoSettleAfterDays: days })}
+                    aria-label="Days of inactivity before auto-settle"
                   />
                 }
               />
@@ -3070,6 +3091,64 @@ export function GeneralSettingsPanel() {
               placeholder={mixedAddProjectBaseDirectory ? "Mixed" : "~/"}
               spellCheck={false}
               aria-label="Add project base directory"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          settingKeys={["agentSessionImportWindowDays"]}
+          {...searchableSetting("session-import-window")}
+          description="Imports Claude and Codex sessions active within this many days. Claude Code deletes transcripts after cleanupPeriodDays (30 by default) in ~/.claude/settings.json, so raise that too for a longer window."
+          resetAction={
+            settings.agentSessionImportWindowDays !==
+            DEFAULT_UNIFIED_SETTINGS.agentSessionImportWindowDays ? (
+              <SettingResetButton
+                label="session import window"
+                onClick={() =>
+                  updateSettings({
+                    agentSessionImportWindowDays:
+                      DEFAULT_UNIFIED_SETTINGS.agentSessionImportWindowDays,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <BoundedIntegerInput
+              value={settings.agentSessionImportWindowDays}
+              min={MIN_AGENT_SESSION_IMPORT_WINDOW_DAYS}
+              max={MAX_AGENT_SESSION_IMPORT_WINDOW_DAYS}
+              onCommit={(days) => updateSettings({ agentSessionImportWindowDays: days })}
+              aria-label="Days of session history to import"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          settingKeys={["agentSessionImportMaxSessions"]}
+          {...searchableSetting("session-import-limit")}
+          description="The newest sessions are imported first. Older ones beyond this limit are skipped."
+          resetAction={
+            settings.agentSessionImportMaxSessions !==
+            DEFAULT_UNIFIED_SETTINGS.agentSessionImportMaxSessions ? (
+              <SettingResetButton
+                label="session import limit"
+                onClick={() =>
+                  updateSettings({
+                    agentSessionImportMaxSessions:
+                      DEFAULT_UNIFIED_SETTINGS.agentSessionImportMaxSessions,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <BoundedIntegerInput
+              value={settings.agentSessionImportMaxSessions}
+              min={MIN_AGENT_SESSION_IMPORT_MAX_SESSIONS}
+              max={MAX_AGENT_SESSION_IMPORT_MAX_SESSIONS}
+              onCommit={(count) => updateSettings({ agentSessionImportMaxSessions: count })}
+              aria-label="Maximum sessions to import per project"
             />
           }
         />

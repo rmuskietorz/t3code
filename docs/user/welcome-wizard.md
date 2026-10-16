@@ -61,8 +61,11 @@ offered.
 A large or malformed history can reach the scan limit. T3 Code keeps the
 projects it found and warns when projects or conversations may be missing.
 
-Imported projects include Codex and Claude conversations active within the last
-30 days. You can continue those conversations in T3 Code.
+Imported projects include up to 100 Codex and Claude conversations active within
+the last 30 days. You can continue those conversations in T3 Code. Change both
+limits under Settings → General → Projects & threads. Claude Code deletes its
+transcripts after `cleanupPeriodDays` (30 by default, in `~/.claude/settings.json`),
+so raise that too if you want a longer window.
 
 Conversation import is best effort. T3 Code keeps the first user prompt and the
 newest remaining visible user and assistant messages, with 200 messages total.

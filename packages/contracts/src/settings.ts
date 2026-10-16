@@ -89,6 +89,26 @@ export const SidebarAutoSettleAfterDays = Schema.Number.check(
 );
 export type SidebarAutoSettleAfterDays = typeof SidebarAutoSettleAfterDays.Type;
 const DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS: SidebarAutoSettleAfterDays = 3;
+export const MIN_AGENT_SESSION_IMPORT_WINDOW_DAYS = 1;
+export const MAX_AGENT_SESSION_IMPORT_WINDOW_DAYS = 365;
+export const AgentSessionImportWindowDays = Schema.Int.check(
+  Schema.isBetween({
+    minimum: MIN_AGENT_SESSION_IMPORT_WINDOW_DAYS,
+    maximum: MAX_AGENT_SESSION_IMPORT_WINDOW_DAYS,
+  }),
+);
+export type AgentSessionImportWindowDays = typeof AgentSessionImportWindowDays.Type;
+const DEFAULT_AGENT_SESSION_IMPORT_WINDOW_DAYS: AgentSessionImportWindowDays = 30;
+export const MIN_AGENT_SESSION_IMPORT_MAX_SESSIONS = 1;
+export const MAX_AGENT_SESSION_IMPORT_MAX_SESSIONS = 1000;
+export const AgentSessionImportMaxSessions = Schema.Int.check(
+  Schema.isBetween({
+    minimum: MIN_AGENT_SESSION_IMPORT_MAX_SESSIONS,
+    maximum: MAX_AGENT_SESSION_IMPORT_MAX_SESSIONS,
+  }),
+);
+export type AgentSessionImportMaxSessions = typeof AgentSessionImportMaxSessions.Type;
+const DEFAULT_AGENT_SESSION_IMPORT_MAX_SESSIONS: AgentSessionImportMaxSessions = 100;
 export const MIN_GLASS_OPACITY = 40;
 export const MAX_GLASS_OPACITY = 100;
 export const GlassOpacity = Schema.Int.check(
@@ -1152,6 +1172,12 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  agentSessionImportWindowDays: AgentSessionImportWindowDays.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_AGENT_SESSION_IMPORT_WINDOW_DAYS)),
+  ),
+  agentSessionImportMaxSessions: AgentSessionImportMaxSessions.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_AGENT_SESSION_IMPORT_MAX_SESSIONS)),
+  ),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
       Effect.succeed({
@@ -1427,6 +1453,8 @@ export const ServerSettingsPatch = Schema.Struct({
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
   worktreeSubmodules: Schema.optionalKey(Schema.NullOr(WorktreeSubmodules)),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
+  agentSessionImportWindowDays: Schema.optionalKey(AgentSessionImportWindowDays),
+  agentSessionImportMaxSessions: Schema.optionalKey(AgentSessionImportMaxSessions),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   branchNamingMode: Schema.optionalKey(BranchNamingMode),
   branchNamePrefix: Schema.optionalKey(TrimmedString),

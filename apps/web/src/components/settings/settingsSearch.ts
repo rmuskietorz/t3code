@@ -480,6 +480,20 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
+    id: "session-import-window",
+    title: "Session import window",
+    to: "/settings/general",
+    scope: "environment-defaults",
+    searchTerms: ["import claude codex history transcripts days recent cleanupPeriodDays"],
+  },
+  {
+    id: "session-import-limit",
+    title: "Sessions imported per project",
+    to: "/settings/general",
+    scope: "environment-defaults",
+    searchTerms: ["import claude codex history transcripts maximum count"],
+  },
+  {
     id: "unpin-confirmation",
     title: "Unpin confirmation",
     to: "/settings/general",

@@ -47,6 +47,9 @@ interface ScannerTestInput {
   readonly importedWorkspaceRoots?: ReadonlyArray<string>;
   readonly configBaseDir?: string;
   readonly providerInstances?: ContractServerSettings["providerInstances"];
+  readonly importSettings?: Partial<
+    Pick<ContractServerSettings, "agentSessionImportWindowDays" | "agentSessionImportMaxSessions">
+  >;
 }
 
 const layerScannerTest = (input: ScannerTestInput) =>
@@ -65,6 +68,7 @@ const layerScannerTest = (input: ScannerTestInput) =>
             },
             ...input.providerInstances,
           },
+          ...input.importSettings,
         }),
         ServerConfig.layerTest(
           input.claudeHomePath,
@@ -2127,6 +2131,104 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
         });
 
         expect(outcomes).toEqual([]);
+      }),
+    );
+
+    const writeCodexSession = Effect.fn("AgentSessionScanner.test.writeCodexSession")(
+      function* (input: {
+        readonly codexHomePath: string;
+        readonly workspace: string;
+        readonly sessionId: string;
+        readonly mtimeMs: number;
+      }) {
+        const path = yield* Path.Path;
+        yield* writeTranscript({
+          filePath: path.join(
+            input.codexHomePath,
+            "sessions",
+            "2026",
+            "08",
+            "24",
+            `rollout-${input.sessionId}.jsonl`,
+          ),
+          contents: [
+            encodeTranscriptRecord({
+              type: "session_meta",
+              payload: { id: input.sessionId, cwd: input.workspace },
+            }),
+            encodeTranscriptRecord({
+              type: "event_msg",
+              payload: { type: "user_message", message: `Prompt ${input.sessionId}` },
+            }),
+          ].join("\n"),
+          mtimeMs: input.mtimeMs,
+        });
+      },
+    );
+
+    it.effect("uses the configured import window instead of the default 30 days", () =>
+      Effect.gen(function* () {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+        const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+        const workspace = yield* makeTempDir("t3code-workspace-");
+        for (const [sessionId, ageDays] of [
+          ["within-window", 44],
+          ["outside-window", 46],
+        ] as const) {
+          yield* writeCodexSession({
+            codexHomePath,
+            workspace,
+            sessionId,
+            mtimeMs: nowMs - ageDays * dayMs,
+          });
+        }
+
+        const threads = yield* runRecentThreads({
+          claudeHomePath,
+          codexHomePath,
+          workspaceRoot: workspace,
+          importSettings: { agentSessionImportWindowDays: 45 },
+        });
+
+        expect(threads.map((thread) => thread.providerSessionId)).toEqual(["within-window"]);
+      }),
+    );
+
+    it.effect("imports at most the configured number of newest sessions", () =>
+      Effect.gen(function* () {
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+        const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+        const workspace = yield* makeTempDir("t3code-workspace-");
+        for (const [sessionId, ageSeconds] of [
+          ["newest", 1],
+          ["middle", 2],
+          ["oldest", 3],
+        ] as const) {
+          yield* writeCodexSession({
+            codexHomePath,
+            workspace,
+            sessionId,
+            mtimeMs: nowMs - ageSeconds * 1_000,
+          });
+        }
+
+        const outcomes = yield* runRecentThreadOutcomes({
+          claudeHomePath,
+          codexHomePath,
+          workspaceRoot: workspace,
+          importSettings: { agentSessionImportMaxSessions: 2 },
+        });
+
+        expect(
+          outcomes.map((outcome) =>
+            outcome._tag === "Importable" ? outcome.thread.providerSessionId : outcome._tag,
+          ),
+        ).toEqual(["newest", "middle", "Skipped"]);
       }),
     );
 

@@ -761,6 +761,26 @@ describe("ServerSettings thread settlement", () => {
   });
 });
 
+describe("ServerSettings agent session import", () => {
+  it("defaults to 30 days and 100 sessions so older settings files keep today's import", () => {
+    expect(decodeServerSettings({})).toMatchObject({
+      agentSessionImportWindowDays: 30,
+      agentSessionImportMaxSessions: 100,
+    });
+  });
+
+  it.each([
+    ["agentSessionImportWindowDays", 0],
+    ["agentSessionImportWindowDays", 366],
+    ["agentSessionImportWindowDays", 1.5],
+    ["agentSessionImportMaxSessions", 0],
+    ["agentSessionImportMaxSessions", 1001],
+  ])("rejects %s = %s", (key, value) => {
+    expect(() => decodeServerSettings({ [key]: value })).toThrow();
+    expect(() => decodeServerSettingsPatch({ [key]: value })).toThrow();
+  });
+});
+
 describe("ClientSettings pull request merge methods", () => {
   it("defaults to no project overrides and accepts supported methods", () => {
     expect(decodeClientSettings({}).pullRequestMergeMethodOverrides).toEqual({});
