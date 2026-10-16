@@ -155,7 +155,15 @@ export class AgentSessionScanner extends Context.Service<
     readonly recentThreads: (
       workspaceRoot: string,
       completedSources?: ReadonlyArray<AgentSessionImportSource>,
+      options?: {
+        /** Leaves out transcripts written to within this many milliseconds. */
+        readonly quietPeriodMs?: number;
+        /** `${providerInstanceId}\0${filePath}` keys to leave out without reading them. */
+        readonly excludedTranscripts?: ReadonlySet<string>;
+      },
     ) => Stream.Stream<AgentSessionRecentThread, AgentSessionScanError>;
+    /** Rediscovers transcripts so later `recentThreads` calls see files created since the last scan. */
+    readonly refreshCandidates: Effect.Effect<void, AgentSessionScanError>;
   }
 >()("t3/project/AgentSessionScanner") {}
 
@@ -955,10 +963,15 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  // Transcripts are append-only and record their cwd up front, so a periodic
+  // re-import only has to read the head of files it has not seen before.
+  let cwdByTranscript = new Map<string, string>();
+
   const groupTranscriptsByCwd = Effect.fn("AgentSessionScanner.groupTranscriptsByCwd")(function* (
     source: AgentSessionSource,
     transcripts: ReadonlyArray<TranscriptCandidate>,
     budget: MetadataReadBudget,
+    seenCwdByTranscript: Map<string, string>,
   ) {
     const byOwnerAndCwd = new Map<
       string,
@@ -971,8 +984,10 @@ export const make = Effect.gen(function* () {
     >();
 
     for (const transcript of transcripts) {
-      const cwd = yield* readCwd(transcript, budget);
+      const cwdKey = `${transcript.providerInstanceId}\0${transcript.filePath}`;
+      const cwd = cwdByTranscript.get(cwdKey) ?? (yield* readCwd(transcript, budget));
       if (cwd === null) continue;
+      seenCwdByTranscript.set(cwdKey, cwd);
       const key = `${transcript.providerInstanceId}\0${cwd}`;
       const existing = byOwnerAndCwd.get(key);
       if (existing) {
@@ -1005,6 +1020,7 @@ export const make = Effect.gen(function* () {
 
     const raw: Array<RawCandidate> = [];
     let truncated = false;
+    const seenCwdByTranscript = new Map<string, string>();
 
     for (const source of ["claudeAgent", "codex"] as const) {
       const instances: Array<{
@@ -1099,10 +1115,18 @@ export const make = Effect.gen(function* () {
         recordsRemaining: MAX_METADATA_RECORDS_PER_SOURCE,
         truncated: false,
       };
-      raw.push(...(yield* groupTranscriptsByCwd(source, selectedTranscripts, metadataBudget)));
+      raw.push(
+        ...(yield* groupTranscriptsByCwd(
+          source,
+          selectedTranscripts,
+          metadataBudget,
+          seenCwdByTranscript,
+        )),
+      );
       truncated ||= metadataBudget.truncated;
     }
 
+    cwdByTranscript = seenCwdByTranscript;
     return { candidates: raw, truncated };
   });
 
@@ -1232,6 +1256,8 @@ export const make = Effect.gen(function* () {
   const prepareRecentThreads = Effect.fn("AgentSessionScanner.prepareRecentThreads")(function* (
     workspaceRoot: string,
     completedSources: ReadonlyArray<AgentSessionImportSource>,
+    quietPeriodMs: number,
+    excludedTranscripts: ReadonlySet<string>,
   ) {
     const root = path.resolve(expandHomePath(workspaceRoot, homeDir));
     const realRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
@@ -1260,7 +1286,8 @@ export const make = Effect.gen(function* () {
         if (
           transcript.mtimeMs === null ||
           transcript.mtimeMs < cutoffMs ||
-          transcript.mtimeMs > nowMs
+          transcript.mtimeMs > nowMs - quietPeriodMs ||
+          excludedTranscripts.has(`${candidate.providerInstanceId}\0${transcript.filePath}`)
         ) {
           continue;
         }
@@ -1392,9 +1419,25 @@ export const make = Effect.gen(function* () {
   const recentThreads: AgentSessionScanner["Service"]["recentThreads"] = (
     workspaceRoot,
     completedSources = [],
-  ) => Stream.unwrap(prepareRecentThreads(workspaceRoot, completedSources));
+    options,
+  ) =>
+    Stream.unwrap(
+      prepareRecentThreads(
+        workspaceRoot,
+        completedSources,
+        options?.quietPeriodMs ?? 0,
+        options?.excludedTranscripts ?? new Set(),
+      ),
+    );
 
-  return AgentSessionScanner.of({ scan, recentThreads });
+  const refreshCandidates: AgentSessionScanner["Service"]["refreshCandidates"] =
+    collectCandidates().pipe(
+      Effect.map(({ candidates }) => {
+        cachedCandidates = candidates;
+      }),
+    );
+
+  return AgentSessionScanner.of({ scan, recentThreads, refreshCandidates });
 });
 
 export const layer = Layer.effect(AgentSessionScanner, make);

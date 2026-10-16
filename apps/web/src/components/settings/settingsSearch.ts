@@ -494,6 +494,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["import claude codex history transcripts maximum count"],
   },
   {
+    id: "session-auto-import",
+    title: "Re-import new sessions",
+    to: "/settings/general",
+    scope: "environment-defaults",
+    searchTerms: ["import claude codex terminal sessions automatic periodic interval minutes now"],
+  },
+  {
     id: "unpin-confirmation",
     title: "Unpin confirmation",
     to: "/settings/general",

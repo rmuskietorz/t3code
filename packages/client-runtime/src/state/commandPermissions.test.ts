@@ -106,6 +106,23 @@ describe("command permissions", () => {
     ),
   );
 
+  it.effect("requires the destination operate grant to re-import agent sessions", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        const reimport = createCommandPermissions(runtime, WS_METHODS.agentSessionsImportAll);
+        registry.set(sessions(env), AsyncResult.success(grant(false)));
+        expect(registry.get(reimport.permissionAtom(env))).toBe(false);
+        expect((yield* reimport.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+          "EnvironmentAuthorizationError",
+        );
+        registry.set(sessions(env), AsyncResult.success(grant(true)));
+        expect(registry.get(reimport.permissionAtom(env))).toBe(true);
+        yield* reimport.authorize(registry, env);
+      }),
+    ),
+  );
+
   it.effect("uses the target grant for both availability and execution", () =>
     Effect.scoped(
       Effect.gen(function* () {

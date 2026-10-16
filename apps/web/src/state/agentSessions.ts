@@ -17,3 +17,8 @@ export const agentSessionImport = createEnvironmentRpcCommand(connectionAtomRunt
   label: "environment-data:agent-sessions:import",
   tag: WS_METHODS.agentSessionsImport,
 });
+
+export const agentSessionImportAll = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:agent-sessions:import-all",
+  tag: WS_METHODS.agentSessionsImportAll,
+});

@@ -14,6 +14,7 @@ import {
   ProviderDriverKind,
   ThreadId,
   TurnItemId,
+  type AgentSessionImportAllResult,
   type AgentSessionImportInput,
   type AgentSessionImportResult,
   type OrchestrationV2AppThread,
@@ -29,11 +30,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
 import * as ProjectService from "./ProjectService.ts";
@@ -80,6 +83,10 @@ class AgentSessionThreadModifiedError extends Schema.TaggedError<AgentSessionThr
   override get message(): string {
     return `Imported thread '${this.threadId}' already contains non-imported activity.`;
   }
+}
+
+function foreignTranscriptKey(source: AgentSessionImportSource): string {
+  return `${source.providerInstanceId}\0${source.filePath}`;
 }
 
 function dateTime(value: string): DateTime.Utc {
@@ -172,26 +179,18 @@ const make = Effect.gen(function* () {
   const eventSink = yield* EventSink.EventSinkV2;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const runtimes = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
-  const importRecentAgentThreads = Effect.fn("importRecentAgentThreadsV2")(function* (
-    input: AgentSessionImportInput,
+  const projections = yield* ProjectionStore.ProjectionStoreV2;
+  // Runs share one lock so a manual and a periodic import never write the same session twice.
+  const importLock = yield* Semaphore.make(1);
+  // Transcripts whose session already belongs to a thread this importer must not
+  // touch, such as one T3 started itself. A transcript file never changes its
+  // session, so the scanner can skip these without reading them again.
+  const foreignTranscripts = new Set<string>();
+
+  const importProject = Effect.fn("AgentSessionImporter.importProject")(function* (
+    project: { readonly id: ProjectId; readonly workspaceRoot: string },
+    quietPeriodMs: number,
   ) {
-    const project = yield* projects.getById(input.projectId).pipe(
-      Effect.mapError((cause) => new AgentSessionScanError({ operation: "read-projects", cause })),
-      Effect.flatMap(
-        Option.match({
-          onNone: () =>
-            Effect.fail(new AgentSessionImportProjectNotFoundError({ projectId: input.projectId })),
-          onSome: Effect.succeed,
-        }),
-      ),
-    );
-    if (
-      input.expectedWorkspaceRoot !== undefined &&
-      normalizeProjectPathForComparison(project.workspaceRoot) !==
-        normalizeProjectPathForComparison(input.expectedWorkspaceRoot)
-    ) {
-      return yield* new AgentSessionImportProjectChangedError({ projectId: input.projectId });
-    }
     const runtimeRows = yield* runtimes
       .list()
       .pipe(
@@ -211,9 +210,13 @@ const make = Effect.gen(function* () {
       }
       return payload.value.importedTranscripts ?? [];
     });
-    const outcomes = scanner.recentThreads(project.workspaceRoot, completedSources);
+    const outcomes = scanner.recentThreads(project.workspaceRoot, completedSources, {
+      quietPeriodMs,
+      excludedTranscripts: foreignTranscripts,
+    });
     const importedThreadIds = new Set<ThreadId>();
     let importedCount = 0;
+    let createdCount = 0;
     let skippedCount = 0;
 
     yield* Stream.runForEach(outcomes, (outcome) =>
@@ -251,10 +254,10 @@ const make = Effect.gen(function* () {
           }
           const existing = yield* Effect.option(orchestrator.getThreadRecords(threadId, []));
           if (Option.isSome(existing)) {
-            if (existing.value.thread.projectId !== input.projectId) {
+            if (existing.value.thread.projectId !== project.id) {
               return yield* new AgentSessionThreadProjectConflictError({
                 threadId,
-                expectedProjectId: input.projectId,
+                expectedProjectId: project.id,
                 actualProjectId: existing.value.thread.projectId,
               });
             }
@@ -262,22 +265,28 @@ const make = Effect.gen(function* () {
               return yield* new AgentSessionThreadModifiedError({ threadId });
             }
             yield* runtimes.recordImportedTranscript({ threadId, source });
-            return true;
+            return "updated" as const;
           }
 
           const driver = ProviderDriverKind.make(thread.source);
           const model = thread.model ?? DEFAULT_MODEL_BY_PROVIDER[driver] ?? DEFAULT_MODEL;
+          // Native and imported threads derive the same provider thread id from the
+          // session, so writing one here would take over a thread T3 is running.
           const providerThreadId = idAllocator.derive.providerThread({
             driver,
             nativeThreadId: thread.providerSessionId,
           });
+          if (Option.isSome(yield* projections.getProviderThreadOwner(providerThreadId))) {
+            foreignTranscripts.add(foreignTranscriptKey(source));
+            return "foreign" as const;
+          }
           const createdAt = dateTime(thread.createdAt);
           const updatedAt = dateTime(thread.updatedAt);
           const appThread: OrchestrationV2AppThread = {
             createdBy: "system",
             creationSource: "server",
             id: threadId,
-            projectId: input.projectId,
+            projectId: project.id,
             title: thread.title.trim() === "" ? "Untitled thread" : thread.title,
             providerInstanceId: thread.providerInstanceId,
             modelSelection: { instanceId: thread.providerInstanceId, model },
@@ -374,29 +383,109 @@ const make = Effect.gen(function* () {
             ],
           });
           yield* runtimes.recordImportedTranscript({ threadId, source });
-          return true;
+          return "created" as const;
         }).pipe(
           Effect.catch((cause) =>
             Effect.logWarning("Could not import an agent session", {
               provider: outcome.thread.source,
               sessionId: outcome.thread.providerSessionId,
               cause,
-            }).pipe(Effect.as(false)),
+            }).pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  if (
+                    cause._tag === "AgentSessionThreadModifiedError" ||
+                    cause._tag === "AgentSessionThreadProjectConflictError"
+                  ) {
+                    foreignTranscripts.add(foreignTranscriptKey(source));
+                  }
+                }),
+              ),
+              Effect.as("failed" as const),
+            ),
           ),
         );
-        if (imported) {
+        if (imported === "created" || imported === "updated") {
           importedThreadIds.add(threadId);
           importedCount += 1;
+          if (imported === "created") createdCount += 1;
         } else {
           skippedCount += 1;
         }
       }),
     );
 
+    return { importedCount, createdCount, skippedCount };
+  });
+
+  const importRecentAgentThreads = Effect.fn("importRecentAgentThreadsV2")(function* (
+    input: AgentSessionImportInput,
+  ) {
+    const project = yield* projects.getById(input.projectId).pipe(
+      Effect.mapError((cause) => new AgentSessionScanError({ operation: "read-projects", cause })),
+      Effect.flatMap(
+        Option.match({
+          onNone: () =>
+            Effect.fail(new AgentSessionImportProjectNotFoundError({ projectId: input.projectId })),
+          onSome: Effect.succeed,
+        }),
+      ),
+    );
+    if (
+      input.expectedWorkspaceRoot !== undefined &&
+      normalizeProjectPathForComparison(project.workspaceRoot) !==
+        normalizeProjectPathForComparison(input.expectedWorkspaceRoot)
+    ) {
+      return yield* new AgentSessionImportProjectChangedError({ projectId: input.projectId });
+    }
+    const { importedCount, skippedCount } = yield* importProject(project, 0).pipe(
+      importLock.withPermits(1),
+    );
     return { importedCount, skippedCount } satisfies AgentSessionImportResult;
   });
 
-  return { importRecentAgentThreads };
+  /**
+   * Imports new sessions into every existing project. `quietPeriodMs` keeps a
+   * periodic run from freezing a session that is still being written, since a
+   * later run never adds messages to a thread it already imported.
+   */
+  const importAllProjects = Effect.fn("AgentSessionImporter.importAllProjects")(
+    function* (options: { readonly quietPeriodMs: number }) {
+      yield* scanner.refreshCandidates;
+      const shells = yield* projects
+        .listShells()
+        .pipe(
+          Effect.mapError(
+            (cause) => new AgentSessionScanError({ operation: "read-projects", cause }),
+          ),
+        );
+      let createdCount = 0;
+      let skippedCount = 0;
+      for (const shell of shells) {
+        const result = yield* importProject(shell, options.quietPeriodMs).pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("Could not re-import agent sessions for a project", {
+              projectId: shell.id,
+              cause,
+            }).pipe(Effect.as({ createdCount: 0, skippedCount: 0 })),
+          ),
+        );
+        createdCount += result.createdCount;
+        skippedCount += result.skippedCount;
+      }
+      return {
+        projectCount: shells.length,
+        createdCount,
+        skippedCount,
+      } satisfies AgentSessionImportAllResult;
+    },
+  );
+
+  return {
+    importRecentAgentThreads,
+    importAllProjects: (options: { readonly quietPeriodMs: number }) =>
+      importAllProjects(options).pipe(importLock.withPermits(1)),
+  };
 });
 
 type AgentSessionImporterShape = Effect.Success<typeof make>;

@@ -9,6 +9,7 @@ import * as McpAppRequests from "../mcpApps/McpAppRequests.ts";
 import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
+import * as AgentSessionAutoImport from "../project/AgentSessionAutoImport.ts";
 import * as AgentSessionImporter from "../project/AgentSessionImporter.ts";
 import * as AgentSessionScanner from "../project/AgentSessionScanner.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -242,6 +243,7 @@ const layerAgentSessionImporterProvided = AgentSessionImporter.layer.pipe(
       layerEventSinkProvided,
       IdAllocator.layer,
       ProviderSessionRuntime.layer,
+      ProjectionStore.layer,
     ),
   ),
 );
@@ -369,5 +371,6 @@ export const layerProduction = Layer.mergeAll(
   ),
   layerProviderContinuationWorkerProvided,
   layerAgentSessionImporterProvided,
+  AgentSessionAutoImport.layer.pipe(Layer.provide(layerAgentSessionImporterProvided)),
   EffectOutbox.layerPruneWorker.pipe(Layer.provide(EffectOutbox.layer)),
 ).pipe(Layer.provide(Scheduler.layer), Layer.provideMerge(layerEventInfrastructure));

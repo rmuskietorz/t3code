@@ -75,6 +75,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -426,6 +427,10 @@ export interface ProjectionStoreV2Shape {
     ReadonlyArray<{ readonly threadId: ThreadId; readonly worktreePath: string }>,
     ProjectionStoreV2Error
   >;
+  /** Includes deleted threads, so an importer cannot resurrect history the user removed. */
+  readonly getProviderThreadOwner: (
+    providerThreadId: ProviderThreadId,
+  ) => Effect.Effect<Option.Option<ThreadId>, ProjectionStoreV2Error>;
   readonly getTurnStartContext: (
     threadId: ThreadId,
     runId: RunId,
@@ -5682,6 +5687,22 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
       );
 
+    const getProviderThreadOwner: ProjectionStoreV2Shape["getProviderThreadOwner"] = (
+      providerThreadId,
+    ) =>
+      sql<{ readonly thread_id: string | null }>`
+        SELECT thread_id
+        FROM orchestration_v2_projection_provider_threads
+        WHERE provider_thread_id = ${providerThreadId}
+      `.pipe(
+        Effect.map((rows) =>
+          Option.map(Option.fromNullishOr(rows[0]?.thread_id), (threadId) =>
+            ThreadId.make(threadId),
+          ),
+        ),
+        Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
+      );
+
     const shellThreadStateFromRow = (input: {
       readonly row: ShellThreadRow;
       readonly runOrdinalsByThreadId: ReadonlyMap<ThreadId, Map<RunId, number>>;
@@ -6016,6 +6037,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getSettlementCandidates,
       getThreadsWithPullRequests,
       getThreadWorktreePaths,
+      getProviderThreadOwner,
       getThreadProjection,
       getTurnStartContext,
       getTurnStartHistory,
@@ -6174,6 +6196,16 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               thread.worktreePath !== null
                 ? [{ threadId: thread.id, worktreePath: thread.worktreePath }]
                 : [],
+            ),
+          ),
+        ),
+      getProviderThreadOwner: (providerThreadId) =>
+        Ref.get(replayState).pipe(
+          Effect.map((state) =>
+            Option.fromNullishOr(
+              [...state.projections.values()]
+                .flatMap(({ providerThreads }) => providerThreads)
+                .find((providerThread) => providerThread.id === providerThreadId)?.appThreadId,
             ),
           ),
         ),

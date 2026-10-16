@@ -67,6 +67,13 @@ limits under Settings → General → Projects & threads. Claude Code deletes it
 transcripts after `cleanupPeriodDays` (30 by default, in `~/.claude/settings.json`),
 so raise that too if you want a longer window.
 
+While T3 Code is open, it checks existing projects for new Claude and Codex
+sessions every 10 minutes. A session still in use waits until it has been idle
+for 10 minutes. Messages added to a session after it was imported are not
+brought over. Change the interval, or set it to 0 to turn it off, in the same
+settings section. "Import now" there, or "Import new agent sessions now" in the
+command palette, checks right away.
+
 Conversation import is best effort. T3 Code keeps the first user prompt and the
 newest remaining visible user and assistant messages, with 200 messages total.
 It omits tool activity and attachments. For Codex, it omits generated setup

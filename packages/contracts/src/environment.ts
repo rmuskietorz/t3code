@@ -91,6 +91,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadAutoSettlement: Schema.optionalKey(Schema.Boolean),
   storageCleanup: Schema.optionalKey(Schema.Boolean),
   storageCleanupRun: Schema.optionalKey(Schema.Boolean),
+  /** Server re-imports Claude and Codex sessions into existing projects on demand. */
+  agentSessionImportAll: Schema.optionalKey(Schema.Boolean),
   /** Server streams database size and reclaimable space for the Storage settings notice. */
   databaseStorage: Schema.optionalKey(Schema.Boolean),
   /** Server checks OTLP endpoints for the telemetry export settings. */

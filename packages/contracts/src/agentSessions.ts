@@ -76,6 +76,17 @@ export const AgentSessionImportResult = Schema.Struct({
 });
 export type AgentSessionImportResult = typeof AgentSessionImportResult.Type;
 
+export const AgentSessionImportAllInput = Schema.Struct({});
+export type AgentSessionImportAllInput = typeof AgentSessionImportAllInput.Type;
+
+/** Counts only threads this run created, unlike `AgentSessionImportResult.importedCount`. */
+export const AgentSessionImportAllResult = Schema.Struct({
+  projectCount: NonNegativeInt,
+  createdCount: NonNegativeInt,
+  skippedCount: NonNegativeInt,
+});
+export type AgentSessionImportAllResult = typeof AgentSessionImportAllResult.Type;
+
 export class AgentSessionScanError extends Schema.TaggedError<AgentSessionScanError>()(
   "AgentSessionScanError",
   {

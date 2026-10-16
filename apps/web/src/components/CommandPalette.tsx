@@ -66,6 +66,7 @@ import {
   FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
+  HistoryIcon,
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -130,6 +131,7 @@ import { useScratchProject } from "../hooks/useScratchProject";
 import { useNewProject } from "../hooks/useNewProject";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
+import { useAgentSessionReimport } from "../hooks/useAgentSessionReimport";
 import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
@@ -634,6 +636,7 @@ function OpenCommandPaletteDialog(props: {
     reportFailure: false,
   });
   const { environments } = useEnvironments();
+  const sessionReimport = useAgentSessionReimport(environments);
   const desktopLocalBootstraps = useDesktopLocalBootstraps();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const availableSettingsSearchItems = useAvailableSettingsSearchItems();
@@ -1960,6 +1963,18 @@ function OpenCommandPaletteDialog(props: {
         });
         if (refreshed._tag === "Failure") throw squashAtomCommandFailure(refreshed);
       },
+    });
+  }
+
+  if (sessionReimport.supported) {
+    actionItems.push({
+      kind: "action",
+      value: "action:reimport-agent-sessions",
+      searchTerms: ["import", "sessions", "claude", "codex", "terminal", "history", "reimport"],
+      title: "Import new agent sessions now",
+      disabled: !sessionReimport.allowed || sessionReimport.pending,
+      icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
+      run: sessionReimport.reimport,
     });
   }
 

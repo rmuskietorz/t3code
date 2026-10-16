@@ -2683,6 +2683,8 @@ const layerWsRpc = (
         [WS_METHODS.agentSessionsScan]: () => agentSessionScanner.scan,
         [WS_METHODS.agentSessionsImport]: (input) =>
           agentSessionImporter.importRecentAgentThreads(input),
+        [WS_METHODS.agentSessionsImportAll]: () =>
+          agentSessionImporter.importAllProjects({ quietPeriodMs: 0 }),
         [WS_METHODS.assetsCreateUrl]: (input) =>
           Effect.gen(function* () {
             const path = yield* Path.Path;

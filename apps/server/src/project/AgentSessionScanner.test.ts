@@ -2232,6 +2232,93 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
       }),
     );
 
+    it.effect("leaves out transcripts in the quiet period or excluded by the caller", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+        const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+        const workspace = yield* makeTempDir("t3code-workspace-");
+        for (const [sessionId, ageMinutes] of [
+          ["still-running", 5],
+          ["excluded", 20],
+          ["idle", 30],
+        ] as const) {
+          yield* writeCodexSession({
+            codexHomePath,
+            workspace,
+            sessionId,
+            mtimeMs: nowMs - ageMinutes * 60_000,
+          });
+        }
+        const excludedPath = path.join(
+          codexHomePath,
+          "sessions",
+          "2026",
+          "08",
+          "24",
+          "rollout-excluded.jsonl",
+        );
+
+        const threads = yield* Effect.gen(function* () {
+          const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+          return yield* scanner
+            .recentThreads(workspace, [], {
+              quietPeriodMs: 10 * 60_000,
+              excludedTranscripts: new Set([`codex\0${excludedPath}`]),
+            })
+            .pipe(Stream.runCollect);
+        }).pipe(Effect.provide(layerScannerTest({ claudeHomePath, codexHomePath })));
+
+        expect(
+          Array.from(threads).flatMap((outcome) =>
+            outcome._tag === "Importable" ? [outcome.thread.providerSessionId] : [],
+          ),
+        ).toEqual(["idle"]);
+      }),
+    );
+
+    it.effect("sees transcripts created after the first import once candidates refresh", () =>
+      Effect.gen(function* () {
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+        const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+        const workspace = yield* makeTempDir("t3code-workspace-");
+        yield* writeCodexSession({
+          codexHomePath,
+          workspace,
+          sessionId: "first",
+          mtimeMs: nowMs - 2_000,
+        });
+
+        const sessionIds = Effect.gen(function* () {
+          const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+          const outcomes = yield* scanner.recentThreads(workspace).pipe(Stream.runCollect);
+          return Array.from(outcomes).flatMap((outcome) =>
+            outcome._tag === "Importable" ? [outcome.thread.providerSessionId] : [],
+          );
+        });
+        const [beforeRefresh, afterRefresh] = yield* Effect.gen(function* () {
+          const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+          expect(yield* sessionIds).toEqual(["first"]);
+          yield* writeCodexSession({
+            codexHomePath,
+            workspace,
+            sessionId: "second",
+            mtimeMs: nowMs - 1_000,
+          });
+          const before = yield* sessionIds;
+          yield* scanner.refreshCandidates;
+          return [before, yield* sessionIds] as const;
+        }).pipe(Effect.provide(layerScannerTest({ claudeHomePath, codexHomePath })));
+
+        expect(beforeRefresh).toEqual(["first"]);
+        expect(afterRefresh).toEqual(["second", "first"]);
+      }),
+    );
+
     it.effect("skips growth during reading without exceeding the reserved bytes", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;

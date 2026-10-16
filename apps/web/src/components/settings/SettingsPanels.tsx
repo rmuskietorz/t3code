@@ -29,6 +29,7 @@ import {
   type ChatWidth,
   type DiffLayout,
   type EnvironmentIdentificationMode,
+  MAX_AGENT_SESSION_AUTO_IMPORT_INTERVAL_MINUTES,
   MAX_AGENT_SESSION_IMPORT_MAX_SESSIONS,
   MAX_AGENT_SESSION_IMPORT_WINDOW_DAYS,
   MAX_APPEARANCE_CONTRAST,
@@ -39,6 +40,7 @@ import {
   MAX_PROMPT_FONT_SIZE,
   MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   MAX_TERMINAL_FONT_SIZE,
+  MIN_AGENT_SESSION_AUTO_IMPORT_INTERVAL_MINUTES,
   MIN_AGENT_SESSION_IMPORT_MAX_SESSIONS,
   MIN_AGENT_SESSION_IMPORT_WINDOW_DAYS,
   MIN_CODE_FONT_SIZE,
@@ -75,6 +77,7 @@ import {
 } from "../SidebarStageBackdrop";
 import { isElectron } from "../../env";
 import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
+import { useAgentSessionReimport } from "../../hooks/useAgentSessionReimport";
 import { useCustomThemes } from "../../hooks/useCustomThemes";
 import {
   readAppearanceModePreference,
@@ -657,6 +660,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.agentSessionImportMaxSessions
         ? ["Sessions imported per project"]
         : []),
+      ...(settings.agentSessionAutoImportIntervalMinutes !==
+      DEFAULT_UNIFIED_SETTINGS.agentSessionAutoImportIntervalMinutes
+        ? ["Re-import new sessions"]
+        : []),
       ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
         ? ["Unpin confirmation"]
         : []),
@@ -700,6 +707,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.addProjectBaseDirectory,
       settings.agentSessionImportWindowDays,
       settings.agentSessionImportMaxSessions,
+      settings.agentSessionAutoImportIntervalMinutes,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
       settings.diffFilesCollapsed,
@@ -841,6 +849,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       agentSessionImportWindowDays: DEFAULT_UNIFIED_SETTINGS.agentSessionImportWindowDays,
       agentSessionImportMaxSessions: DEFAULT_UNIFIED_SETTINGS.agentSessionImportMaxSessions,
+      agentSessionAutoImportIntervalMinutes:
+        DEFAULT_UNIFIED_SETTINGS.agentSessionAutoImportIntervalMinutes,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
@@ -2217,6 +2227,7 @@ export function GeneralSettingsPanel() {
   const backgroundActivityProfileOption = resolveBackgroundActivityProfileOption(settings);
   const mixedBackgroundActivity = useScopedSettingsMixed(["backgroundActivity"]);
   const mixedAddProjectBaseDirectory = useScopedSettingsMixed(["addProjectBaseDirectory"]);
+  const sessionReimport = useAgentSessionReimport(connectedEnvironments);
   const mixedTextGenerationModel = useScopedSettingsMixed(["textGenerationModelSelection"]);
   const backgroundActivityDescription =
     backgroundActivityProfileOption === "advanced"
@@ -3152,6 +3163,49 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+        {sessionReimport.supported ? (
+          <SettingsRow
+            serverScoped
+            settingKeys={["agentSessionAutoImportIntervalMinutes"]}
+            {...searchableSetting("session-auto-import")}
+            description="Checks existing projects for new terminal sessions every this many minutes while T3 Code is open. 0 turns it off. Sessions still in use wait until they have been idle for 10 minutes, and later messages in an imported session are not added."
+            resetAction={
+              settings.agentSessionAutoImportIntervalMinutes !==
+              DEFAULT_UNIFIED_SETTINGS.agentSessionAutoImportIntervalMinutes ? (
+                <SettingResetButton
+                  label="session re-import interval"
+                  onClick={() =>
+                    updateSettings({
+                      agentSessionAutoImportIntervalMinutes:
+                        DEFAULT_UNIFIED_SETTINGS.agentSessionAutoImportIntervalMinutes,
+                    })
+                  }
+                />
+              ) : null
+            }
+            control={
+              <div className="flex w-full items-center gap-2 sm:w-auto">
+                <BoundedIntegerInput
+                  value={settings.agentSessionAutoImportIntervalMinutes}
+                  min={MIN_AGENT_SESSION_AUTO_IMPORT_INTERVAL_MINUTES}
+                  max={MAX_AGENT_SESSION_AUTO_IMPORT_INTERVAL_MINUTES}
+                  onCommit={(minutes) =>
+                    updateSettings({ agentSessionAutoImportIntervalMinutes: minutes })
+                  }
+                  aria-label="Minutes between session re-imports"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={sessionReimport.pending || !sessionReimport.allowed}
+                  onClick={() => void sessionReimport.reimport()}
+                >
+                  {sessionReimport.pending ? "Importing…" : "Import now"}
+                </Button>
+              </div>
+            }
+          />
+        ) : null}
       </SettingsSection>
 
       <SettingsSection id="confirmations" title="Confirmations">

@@ -27,6 +27,7 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Tracer from "effect/Tracer";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -381,6 +382,80 @@ const threadWorktreePathsReadActiveThreads = Effect.gen(function* () {
   ]);
 });
 
+const providerThreadOwnerSurvivesThreadDeletion = Effect.gen(function* () {
+  const store = yield* ProjectionStore.ProjectionStoreV2;
+  const now = yield* DateTime.now;
+  const threadId = ThreadId.make("thread:provider-owner");
+  const providerThreadId = ProviderThreadId.make("provider-thread:provider-owner");
+  const thread = {
+    createdBy: "user" as const,
+    creationSource: "web" as const,
+    id: threadId,
+    projectId: ProjectId.make("project:provider-owner"),
+    title: "Provider owner",
+    providerInstanceId,
+    modelSelection,
+    runtimeMode: "full-access" as const,
+    interactionMode: "default" as const,
+    branch: null,
+    worktreePath: null,
+    activeProviderThreadId: providerThreadId,
+    lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+    forkedFrom: null,
+    createdAt: now,
+    updatedAt: now,
+    archivedAt: null,
+    settledOverride: null,
+    settledAt: null,
+    lastVisitedAt: null,
+    deletedAt: null,
+  };
+  yield* store.apply({
+    id: EventId.make("event:provider-owner:created"),
+    type: "thread.created",
+    threadId,
+    occurredAt: now,
+    payload: thread,
+  });
+  yield* store.apply({
+    id: EventId.make("event:provider-owner:provider-thread"),
+    type: "provider-thread.updated",
+    threadId,
+    driver,
+    occurredAt: now,
+    payload: {
+      id: providerThreadId,
+      driver,
+      providerInstanceId,
+      providerSessionId: null,
+      appThreadId: threadId,
+      ownerNodeId: null,
+      nativeThreadRef: null,
+      nativeConversationHeadRef: null,
+      status: "idle",
+      firstRunOrdinal: null,
+      lastRunOrdinal: null,
+      handoffIds: [],
+      forkedFrom: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+  yield* store.apply({
+    id: EventId.make("event:provider-owner:deleted"),
+    type: "thread.deleted",
+    threadId,
+    occurredAt: now,
+    payload: { ...thread, deletedAt: now },
+  });
+
+  assert.deepEqual(yield* store.getProviderThreadOwner(providerThreadId), Option.some(threadId));
+  assert.deepEqual(
+    yield* store.getProviderThreadOwner(ProviderThreadId.make("provider-thread:unknown")),
+    Option.none(),
+  );
+});
+
 const commandReadsSkipSettledLeafNodes = Effect.gen(function* () {
   const store = yield* ProjectionStore.ProjectionStoreV2;
   const now = yield* DateTime.now;
@@ -462,6 +537,10 @@ const commandReadsSkipSettledLeafNodes = Effect.gen(function* () {
 
 it.effect("memory command reads skip finished leaf nodes of finished runs", () =>
   commandReadsSkipSettledLeafNodes.pipe(Effect.provide(ProjectionStore.layerMemory)),
+);
+
+it.effect("memory provider thread owner lookup includes deleted threads", () =>
+  providerThreadOwnerSurvivesThreadDeletion.pipe(Effect.provide(ProjectionStore.layerMemory)),
 );
 
 it.effect("memory worktree path lookup reads only active threads", () =>
@@ -694,6 +773,10 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
   it.effect(
     "worktree path lookup reads only active threads",
     () => threadWorktreePathsReadActiveThreads,
+  );
+  it.effect(
+    "provider thread owner lookup includes deleted threads",
+    () => providerThreadOwnerSurvivesThreadDeletion,
   );
 
   it.effect(

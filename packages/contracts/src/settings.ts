@@ -109,6 +109,18 @@ export const AgentSessionImportMaxSessions = Schema.Int.check(
 );
 export type AgentSessionImportMaxSessions = typeof AgentSessionImportMaxSessions.Type;
 const DEFAULT_AGENT_SESSION_IMPORT_MAX_SESSIONS: AgentSessionImportMaxSessions = 100;
+/** Zero turns the periodic re-import off. */
+export const MIN_AGENT_SESSION_AUTO_IMPORT_INTERVAL_MINUTES = 0;
+export const MAX_AGENT_SESSION_AUTO_IMPORT_INTERVAL_MINUTES = 1440;
+export const AgentSessionAutoImportIntervalMinutes = Schema.Int.check(
+  Schema.isBetween({
+    minimum: MIN_AGENT_SESSION_AUTO_IMPORT_INTERVAL_MINUTES,
+    maximum: MAX_AGENT_SESSION_AUTO_IMPORT_INTERVAL_MINUTES,
+  }),
+);
+export type AgentSessionAutoImportIntervalMinutes =
+  typeof AgentSessionAutoImportIntervalMinutes.Type;
+const DEFAULT_AGENT_SESSION_AUTO_IMPORT_INTERVAL_MINUTES: AgentSessionAutoImportIntervalMinutes = 10;
 export const MIN_GLASS_OPACITY = 40;
 export const MAX_GLASS_OPACITY = 100;
 export const GlassOpacity = Schema.Int.check(
@@ -1178,6 +1190,9 @@ export const ServerSettings = Schema.Struct({
   agentSessionImportMaxSessions: AgentSessionImportMaxSessions.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_AGENT_SESSION_IMPORT_MAX_SESSIONS)),
   ),
+  agentSessionAutoImportIntervalMinutes: AgentSessionAutoImportIntervalMinutes.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_AGENT_SESSION_AUTO_IMPORT_INTERVAL_MINUTES)),
+  ),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
       Effect.succeed({
@@ -1455,6 +1470,7 @@ export const ServerSettingsPatch = Schema.Struct({
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   agentSessionImportWindowDays: Schema.optionalKey(AgentSessionImportWindowDays),
   agentSessionImportMaxSessions: Schema.optionalKey(AgentSessionImportMaxSessions),
+  agentSessionAutoImportIntervalMinutes: Schema.optionalKey(AgentSessionAutoImportIntervalMinutes),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   branchNamingMode: Schema.optionalKey(BranchNamingMode),
   branchNamePrefix: Schema.optionalKey(TrimmedString),

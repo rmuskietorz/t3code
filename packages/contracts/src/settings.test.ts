@@ -762,10 +762,17 @@ describe("ServerSettings thread settlement", () => {
 });
 
 describe("ServerSettings agent session import", () => {
-  it("defaults to 30 days and 100 sessions so older settings files keep today's import", () => {
+  it("defaults to 30 days, 100 sessions, and a re-import every 10 minutes", () => {
     expect(decodeServerSettings({})).toMatchObject({
       agentSessionImportWindowDays: 30,
       agentSessionImportMaxSessions: 100,
+      agentSessionAutoImportIntervalMinutes: 10,
+    });
+  });
+
+  it("accepts 0 to turn the periodic re-import off", () => {
+    expect(decodeServerSettingsPatch({ agentSessionAutoImportIntervalMinutes: 0 })).toMatchObject({
+      agentSessionAutoImportIntervalMinutes: 0,
     });
   });
 
@@ -775,6 +782,8 @@ describe("ServerSettings agent session import", () => {
     ["agentSessionImportWindowDays", 1.5],
     ["agentSessionImportMaxSessions", 0],
     ["agentSessionImportMaxSessions", 1001],
+    ["agentSessionAutoImportIntervalMinutes", -1],
+    ["agentSessionAutoImportIntervalMinutes", 1441],
   ])("rejects %s = %s", (key, value) => {
     expect(() => decodeServerSettings({ [key]: value })).toThrow();
     expect(() => decodeServerSettingsPatch({ [key]: value })).toThrow();
