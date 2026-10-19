@@ -4,6 +4,7 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
   | "open-in-split-view"
+  | "open-in-new-window"
   | "filter-by-project"
   | "filter-by-group"
   | "project-settings"
@@ -102,6 +103,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
   return ![
     "new-thread-on-branch",
     "open-in-split-view",
+    "open-in-new-window",
     "project-settings",
     "mark-unread",
     "copy",
@@ -125,7 +127,10 @@ export function buildThreadActionMenuItems(
         ]
       : []),
     ...(state.splitView
-      ? [{ id: "open-in-split-view" as const, label: "Open in split view", icon: "columns-2" }]
+      ? [
+          { id: "open-in-split-view" as const, label: "Open in split view", icon: "columns-2" },
+          { id: "open-in-new-window" as const, label: "Open in new window", icon: "app-window" },
+        ]
       : []),
     ...(state.supports.pinning
       ? [

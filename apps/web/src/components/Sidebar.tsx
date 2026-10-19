@@ -4620,6 +4620,14 @@ export default function Sidebar() {
               }).href,
             );
             return;
+          case "open-in-new-window":
+            readSplitViewHost()?.openInNewWindow(
+              router.buildLocation({
+                to: "/$environmentId/$threadId",
+                params: buildThreadRouteParams(threadRef),
+              }).href,
+            );
+            return;
           case "mark-unread":
             markThreadUnread(threadRef);
             return;

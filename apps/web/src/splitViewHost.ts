@@ -15,6 +15,8 @@ export interface SplitViewHost {
   readonly closeThisPane: () => void;
   /** Parks the pane this app runs in as a tab the shell can restore later. */
   readonly minimizeThisPane: () => void;
+  /** Opens an in-app path in a new shell window. */
+  readonly openInNewWindow: (path: string) => void;
   readonly isSplit: () => boolean;
   readonly subscribe: (onChange: () => void) => () => void;
 }

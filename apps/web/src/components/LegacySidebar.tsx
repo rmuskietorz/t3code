@@ -2361,7 +2361,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       const clicked = await api.contextMenu.show(
         [
           ...(splitViewHost
-            ? [{ id: "open-in-split-view", label: "Open in split view", icon: "columns-2" }]
+            ? [
+                { id: "open-in-split-view", label: "Open in split view", icon: "columns-2" },
+                { id: "open-in-new-window", label: "Open in new window", icon: "app-window" },
+              ]
             : []),
           ...(thread.branch
             ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
@@ -2382,13 +2385,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         position,
       );
 
-      if (clicked === "open-in-split-view") {
-        splitViewHost?.openInOtherPane(
-          router.buildLocation({
-            to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams(threadRef),
-          }).href,
-        );
+      if (clicked === "open-in-split-view" || clicked === "open-in-new-window") {
+        const path = router.buildLocation({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(threadRef),
+        }).href;
+        if (clicked === "open-in-split-view") splitViewHost?.openInOtherPane(path);
+        else splitViewHost?.openInNewWindow(path);
         return;
       }
 

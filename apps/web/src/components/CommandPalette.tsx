@@ -2001,7 +2001,32 @@ function OpenCommandPaletteDialog(props: {
           );
         },
       });
+      actionItems.push({
+        kind: "action",
+        value: "action:open-thread-in-new-window",
+        searchTerms: ["window", "new window", "open", "separate"],
+        title: "Open this thread in a new window",
+        icon: <Columns2Icon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          splitViewHost.openInNewWindow(
+            router.buildLocation({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(threadRef),
+            }).href,
+          );
+        },
+      });
     }
+    actionItems.push({
+      kind: "action",
+      value: "action:new-window",
+      searchTerms: ["window", "new window", "second window", "ctrl+alt+n"],
+      title: "New window (Ctrl+Alt+N)",
+      icon: <Columns2Icon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        splitViewHost.openInNewWindow("/pull-requests");
+      },
+    });
   }
 
   if (activeThread !== null) {

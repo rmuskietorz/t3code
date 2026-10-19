@@ -15,6 +15,12 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     { tag: "circle", attrs: { cx: "12", cy: "14", r: "8" } },
   ],
   "chevron-right": [{ tag: "path", attrs: { d: "m9 19 7-7-7-7" } }],
+  "app-window": [
+    { tag: "rect", attrs: { x: "2", y: "4", width: "20", height: "16", rx: "2" } },
+    { tag: "path", attrs: { d: "M10 4v4" } },
+    { tag: "path", attrs: { d: "M2 8h20" } },
+    { tag: "path", attrs: { d: "M6 4v4" } },
+  ],
   "columns-2": [
     { tag: "rect", attrs: { width: "18", height: "18", x: "3", y: "3", rx: "2" } },
     { tag: "path", attrs: { d: "M12 3v18" } },

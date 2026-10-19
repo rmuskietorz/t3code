@@ -164,6 +164,7 @@ describe("buildThreadActionMenuItems", () => {
     expect(ids(baseState)).not.toContain("open-in-split-view");
     const items = buildThreadActionMenuItems({ ...baseState, splitView: true });
     expect(items[0]).toMatchObject({ id: "open-in-split-view", label: "Open in split view" });
+    expect(items[1]).toMatchObject({ id: "open-in-new-window", label: "Open in new window" });
   });
 
   it("includes branch items only for threads with a branch", () => {
