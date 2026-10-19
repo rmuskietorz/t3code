@@ -10,4 +10,9 @@ export const browserApiCorsAllowedHeaders = [
   ORCHESTRATION_PROTOCOL_HEADER,
 ] as const;
 
-export const DESKTOP_RENDERER_ORIGINS = ["t3code://app", "t3code-dev://app"] as const;
+// `t3code-fork` is the side-by-side desktop install set by T3CODE_DESKTOP_INSTANCE=fork.
+export const DESKTOP_RENDERER_ORIGINS = [
+  "t3code://app",
+  "t3code-dev://app",
+  "t3code-fork://app",
+] as const;

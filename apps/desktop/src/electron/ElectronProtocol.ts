@@ -13,7 +13,12 @@ import * as Scope from "effect/Scope";
 import * as Electron from "electron";
 
 export const DESKTOP_HOST = "app";
-const DESKTOP_PRODUCTION_SCHEME = "t3code";
+// Read directly from the environment because scheme privileges are registered
+// synchronously before the app's config layer exists. A side-by-side install
+// must not claim the main app's scheme, which Clerk registers as the OS handler.
+const DESKTOP_PRODUCTION_SCHEME = process.env.T3CODE_DESKTOP_INSTANCE?.trim()
+  ? `t3code-${process.env.T3CODE_DESKTOP_INSTANCE.trim()}`
+  : "t3code";
 const DESKTOP_DEVELOPMENT_SCHEME = "t3code-dev";
 
 export function getDesktopScheme(isDevelopment: boolean): string {

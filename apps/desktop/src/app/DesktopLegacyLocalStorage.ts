@@ -77,9 +77,10 @@ const make = Effect.gen(function* () {
     const marker = path.join(userDataPath, MARKER_FILE_NAME);
     if (yield* fs.exists(marker).pipe(Effect.orElseSucceed(() => true))) return;
     yield* Ref.set(markerPath, Option.some(marker));
-    const directory = yield* findV1LocalStorage;
+    const source = Option.getOrNull(environment.localStorageImport);
+    const directory = source?.directory ?? (yield* findV1LocalStorage);
     if (directory === null) return yield* writeMarker;
-    const origin = ElectronProtocol.getDesktopUrl(false).replace(/\/$/, "");
+    const origin = source?.origin ?? ElectronProtocol.getDesktopUrl(false).replace(/\/$/, "");
     const read = yield* readChromiumLocalStorage(directory, origin).pipe(
       Effect.provideService(FileSystem.FileSystem, fs),
       Effect.provideService(Path.Path, path),

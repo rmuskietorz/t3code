@@ -74,6 +74,13 @@ export class DesktopEnvironment extends Context.Service<
     readonly branding: DesktopAppBranding;
     readonly displayName: string;
     readonly appUserModelId: string;
+    /** A side-by-side install with its own scheme, profile and app id; see ElectronProtocol. */
+    readonly desktopInstance: Option.Option<string>;
+    /** Replaces the V1 profile as the one-time Local Storage import source. */
+    readonly localStorageImport: Option.Option<{
+      readonly directory: string;
+      readonly origin: string;
+    }>;
     readonly linuxDesktopEntryName: string;
     readonly linuxWmClass: string;
     readonly linuxApplicationsDir: string;
@@ -171,7 +178,10 @@ const make = Effect.fn("desktop.environment.make")(function* (
     isDevelopment,
     appVersion: input.appVersion,
   });
-  const displayName = branding.displayName;
+  const displayName = Option.match(config.desktopInstance, {
+    onNone: () => branding.displayName,
+    onSome: (instance) => `${branding.baseName} (${instance})`,
+  });
   const stateDir = resolveDesktopStateDir({
     baseDir,
     isDevelopment,
@@ -228,7 +238,18 @@ const make = Effect.fn("desktop.environment.make")(function* (
     branding,
     displayName,
     appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
-      isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
+      isDevelopment
+        ? "com.t3tools.t3code.dev"
+        : Option.match(config.desktopInstance, {
+            onNone: () => "com.t3tools.t3code",
+            onSome: (instance) => `com.t3tools.t3code.${instance}`,
+          }),
+    ),
+    desktopInstance: config.desktopInstance,
+    localStorageImport: Option.zipWith(
+      config.importLocalStorageDir,
+      config.importLocalStorageOrigin,
+      (directory, origin) => ({ directory, origin }),
     ),
     linuxDesktopEntryName: resolveLinuxDesktopEntryName(isDevelopment),
     linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",
