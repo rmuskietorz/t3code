@@ -1,4 +1,5 @@
 import {
+  type UsageLimitsReport,
   EnvironmentId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -24,6 +25,7 @@ import {
   paceOf,
   providersWithLimits,
   remainingPercent,
+  usageLimitsIndicator,
   usesChatGptSharing,
 } from "./usageLimits.ts";
 
@@ -1443,5 +1445,115 @@ describe("Antigravity limit presentation", () => {
       "3p-weekly",
     ]);
     expect(windows.map((window) => window.remainingPercent)).toEqual([80, 90, 10, 0]);
+  });
+});
+
+describe("usageLimitsIndicator", () => {
+  const instanceId = ProviderInstanceId.make("claude-work");
+  const account = (
+    overrides: Partial<UsageLimitsReport["accounts"][number]> = {},
+  ): UsageLimitsReport["accounts"][number] => ({
+    id: "claude-work",
+    driver: ProviderDriverKind.make("claudeAgent"),
+    label: "Claude [claude-work]",
+    instanceId,
+    limits: {
+      checkedAt: "2026-09-03T11:55:00.000Z",
+      windows: [
+        {
+          id: "seven_day_opus",
+          kind: "weekly",
+          label: "Weekly Opus",
+          usedPercent: 50,
+          resetsAt: "2026-09-08T12:00:00.000Z",
+        },
+        {
+          id: "five_hour",
+          kind: "session",
+          label: "Session",
+          usedPercent: 58.4,
+          resetsAt: "2026-09-03T14:00:00.000Z",
+          windowDurationMins: 300,
+        },
+        {
+          id: "seven_day",
+          kind: "weekly",
+          label: "Weekly",
+          usedPercent: 18,
+          resetsAt: "2026-09-07T12:00:00.000Z",
+          windowDurationMins: 10_080,
+        },
+      ],
+    },
+    ...overrides,
+  });
+  const report = (accounts: UsageLimitsReport["accounts"]): UsageLimitsReport => ({
+    createdAt: "2026-09-03T12:00:00.000Z",
+    accounts,
+    notices: [],
+  });
+
+  it("shows the session window before the first weekly one as remaining percent", () => {
+    const indicator = usageLimitsIndicator(report([account()]), instanceId, now);
+    expect(
+      indicator?.windows.map(({ window, shortLabel, remainingPercent }) => [
+        window.id,
+        shortLabel,
+        remainingPercent,
+      ]),
+    ).toEqual([
+      ["five_hour", "5h", 42],
+      ["seven_day_opus", "W", 50],
+    ]);
+    expect(indicator?.stale).toBe(false);
+  });
+
+  it("prefers the selected instance and needs a single account otherwise", () => {
+    const hub = (id: string) =>
+      account({ id, label: `Hub · ${id}`, instanceId: undefined, sourceLabel: "CLI Proxy" });
+    const selected = report([hub("a"), account()]);
+    expect(usageLimitsIndicator(selected, instanceId, now)?.windows[0]?.window.id).toBe(
+      "five_hour",
+    );
+    expect(usageLimitsIndicator(report([hub("a")]), instanceId, now)).not.toBeNull();
+    expect(usageLimitsIndicator(report([hub("a"), hub("b")]), instanceId, now)).toBeNull();
+  });
+
+  it("renders nothing for accounts without readable windows", () => {
+    const unsupported = account({
+      limits: {
+        checkedAt: "2026-09-03T11:55:00.000Z",
+        windows: [],
+        unavailable: { reason: "unsupported" },
+      },
+    });
+    expect(usageLimitsIndicator(report([unsupported]), instanceId, now)).toBeNull();
+    expect(usageLimitsIndicator(report([]), instanceId, now)).toBeNull();
+  });
+
+  it("falls back to the first window by kind when there is no session or weekly window", () => {
+    const monthly = account({
+      limits: {
+        checkedAt: "2026-09-03T11:55:00.000Z",
+        windows: [
+          { id: "extra", kind: "other", label: "Extra", usedPercent: 10 },
+          { id: "month", kind: "monthly", label: "Monthly", usedPercent: 30 },
+        ],
+      },
+    });
+    expect(
+      usageLimitsIndicator(report([monthly]), instanceId, now)?.windows.map(
+        ({ window, shortLabel, remainingPercent }) => [window.id, shortLabel, remainingPercent],
+      ),
+    ).toEqual([["month", "Monthly", 70]]);
+  });
+
+  it("marks kept reads after a failed probe or a passed reset as stale", () => {
+    const failed = account({
+      limits: { ...account().limits, unavailable: { reason: "probeFailed" } },
+    });
+    expect(usageLimitsIndicator(report([failed]), instanceId, now)?.stale).toBe(true);
+    const later = Date.parse("2026-09-03T14:00:00.000Z");
+    expect(usageLimitsIndicator(report([account()]), instanceId, later)?.stale).toBe(true);
   });
 });

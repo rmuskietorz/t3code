@@ -36,6 +36,7 @@ import {
   collectProviderUsageLimits,
   hasProviderUsageLimits,
   isUsageLimitsCommand,
+  usageLimitsIndicator as deriveUsageLimitsIndicator,
 } from "@t3tools/shared/usageLimits";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
 import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
@@ -3540,6 +3541,32 @@ export default function ChatView(props: ChatViewProps) {
     return false;
   };
   const openUsageLimitsStable = useStableCallback(openUsageLimits);
+  const usageLimitsIndicatorEnabled = settings.usageLimitsIndicatorEnabled;
+  // Reads the snapshot the server already keeps current through its provider
+  // status refresh, so the composer never starts a provider check of its own.
+  const usageLimitsIndicator = useMemo(() => {
+    if (!usageLimitsIndicatorEnabled || !usageLimitsOffered || activeProviderInstanceId === null) {
+      return null;
+    }
+    const now = Date.now();
+    const report = collectProviderUsageLimits(
+      activeProviderInstanceId,
+      providerStatuses,
+      usageLimitSources,
+      now,
+    );
+    return report ? deriveUsageLimitsIndicator(report, activeProviderInstanceId, now) : null;
+  }, [
+    activeProviderInstanceId,
+    providerStatuses,
+    usageLimitSources,
+    usageLimitsIndicatorEnabled,
+    usageLimitsOffered,
+  ]);
+  const toggleUsageLimitsStable = useStableCallback(() => {
+    if (usageLimitsBanner !== null) setUsageLimitsPanel(null);
+    else openUsageLimits();
+  });
   // Responses can resolve after navigating away; only the originating thread's panel clears.
   const clearUsageLimitsFor = (threadKey: string) =>
     setUsageLimitsPanel((current) =>
@@ -11231,6 +11258,9 @@ export default function ChatView(props: ChatViewProps) {
                                   ? openUsageLimitsStable
                                   : undefined
                               }
+                              usageLimitsIndicator={usageLimitsIndicator}
+                              usageLimitsOpen={usageLimitsBanner !== null}
+                              onToggleUsageLimits={toggleUsageLimitsStable}
                               environmentUnavailable={activeEnvironmentUnavailableState}
                               activePendingApproval={activePendingApproval}
                               pendingApprovals={pendingApprovals}

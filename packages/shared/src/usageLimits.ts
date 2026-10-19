@@ -695,3 +695,66 @@ export function collectProviderUsageLimits(
   }
   return { createdAt: DateTime.formatIso(DateTime.makeUnsafe(now)), accounts, notices };
 }
+
+export interface UsageLimitsIndicatorWindow {
+  readonly window: ServerProviderUsageWindow;
+  readonly shortLabel: string;
+  readonly remainingPercent: number;
+}
+
+export interface UsageLimitsIndicator {
+  readonly windows: readonly UsageLimitsIndicatorWindow[];
+  /** The last good read is kept after a failed probe or once a shown window has reset. */
+  readonly stale: boolean;
+}
+
+function shortWindowLabel(window: ServerProviderUsageWindow): string {
+  const mins = window.windowDurationMins;
+  if (window.kind === "session") return mins && mins % 60 === 0 ? `${mins / 60}h` : window.label;
+  if (window.kind === "weekly") return "W";
+  return window.label;
+}
+
+/**
+ * Picks the selected instance's own account, or the only account reporting
+ * windows, and reduces it to its session and weekly windows (the first window
+ * when it reports neither).
+ */
+export function usageLimitsIndicator(
+  report: UsageLimitsReport,
+  instanceId: ProviderInstanceId,
+  now: number,
+): UsageLimitsIndicator | null {
+  const readable = report.accounts.filter(
+    (account) =>
+      account.limits.windows.length > 0 && account.limits.unavailable?.reason !== "unsupported",
+  );
+  const account =
+    readable.find((candidate) => candidate.instanceId === instanceId) ??
+    (readable.length === 1 ? readable[0] : undefined);
+  if (!account) return null;
+  const { windows } = account.limits;
+  const preferred = [
+    windows.find((window) => window.kind === "session"),
+    windows.find((window) => window.kind === "weekly"),
+  ].filter((window) => window !== undefined);
+  const shown =
+    preferred.length > 0
+      ? preferred
+      : [...windows]
+          .sort((left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind])
+          .slice(0, 1);
+  return {
+    windows: shown.map((window) => ({
+      window,
+      shortLabel: shortWindowLabel(window),
+      remainingPercent: remainingPercent(window),
+    })),
+    stale:
+      account.limits.unavailable?.reason === "probeFailed" ||
+      shown.some((window) => {
+        const at = resetMillis(window);
+        return at !== null && at <= now;
+      }),
+  };
+}

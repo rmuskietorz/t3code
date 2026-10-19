@@ -1,11 +1,20 @@
 import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
-import { limitsNotice } from "@t3tools/shared/usageLimits";
+import {
+  formatResetsIn,
+  limitsNotice,
+  type UsageLimitsIndicator,
+} from "@t3tools/shared/usageLimits";
 import { GaugeIcon } from "lucide-react";
+import { memo } from "react";
 
+import { usePrimarySettings } from "../../hooks/useSettings";
+import { cn } from "../../lib/utils";
 import { ensureLocalApi } from "../../localApi";
+import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { providerClients } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { LimitWindows, ResetCredits } from "../usage/UsageLimits";
 import { ComposerBanner } from "./ComposerBanner";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
@@ -132,3 +141,84 @@ function UsageLimitsBannerBody({
     </ComposerBanner.Scroll>
   );
 }
+
+function UsageLimitsIndicatorDetails({ indicator }: { readonly indicator: UsageLimitsIndicator }) {
+  const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
+  // Read when the tooltip opens so countdowns are current without a ticking timer.
+  const now = Date.now();
+  return (
+    <div className="flex flex-col gap-1">
+      {indicator.windows.map(({ window, remainingPercent }) => {
+        const resetsIn = formatResetsIn(window, now);
+        return (
+          <span key={window.id} className="flex flex-col tabular-nums">
+            <span className="text-foreground">
+              {window.label}: {remainingPercent}% left
+            </span>
+            {window.resetsAt ? (
+              <span className="text-muted-foreground">
+                Resets {formatUpcomingTimestamp(window.resetsAt, timestampFormat, now)}
+                {resetsIn ? ` · ${resetsIn}` : ""}
+              </span>
+            ) : null}
+          </span>
+        );
+      })}
+      {indicator.stale ? (
+        <span className="text-muted-foreground">Last check is out of date.</span>
+      ) : null}
+    </div>
+  );
+}
+
+export const ComposerUsageLimitsIndicator = memo(function ComposerUsageLimitsIndicator({
+  indicator,
+  compact,
+  open,
+  onToggle,
+}: {
+  readonly indicator: UsageLimitsIndicator;
+  readonly compact: boolean;
+  readonly open: boolean;
+  readonly onToggle: () => void;
+}) {
+  const shown = compact ? indicator.windows.slice(0, 1) : indicator.windows;
+  const summary = indicator.windows
+    .map(({ window, remainingPercent }) => `${window.label} ${remainingPercent}% left`)
+    .join(", ");
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost-muted"
+            aria-label={`Usage limits: ${summary}`}
+            aria-expanded={open}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={onToggle}
+          />
+        }
+      >
+        <span
+          className={cn(
+            "flex items-center gap-1 whitespace-nowrap tabular-nums",
+            indicator.stale && "opacity-50",
+          )}
+        >
+          <GaugeIcon aria-hidden />
+          {shown.map(({ window, shortLabel, remainingPercent }, index) => (
+            <span key={window.id}>
+              {index > 0 ? "· " : ""}
+              {shortLabel} {remainingPercent}%
+            </span>
+          ))}
+        </span>
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        <UsageLimitsIndicatorDetails indicator={indicator} />
+      </TooltipPopup>
+    </Tooltip>
+  );
+});

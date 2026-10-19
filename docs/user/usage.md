@@ -104,6 +104,11 @@ current model's limits without leaving the conversation. The result opens above 
 closes when you dismiss it or send your next message. It uses the same snapshot as **Usage → Limits**, so it does not run the agent or refresh
 anything. The command is offered only for providers that appear under **Usage → Limits**.
 
+The composer also shows the current model's 5-hour and weekly limits as the share left, such as
+`5h 42% · W 82%`, from the same snapshot. Hover it for reset times, or click it to open the same
+details as `/usage-limits`. It is dimmed when the last check failed or a window has reset since.
+Turn it off in **Settings → General → Usage limits in composer**.
+
 OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
 the environment. T3 cannot report limits for external OpenCode servers because their credentials
 belong to the remote server. Limits need an OpenCode Go API key. A Console sign-in alone

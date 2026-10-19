@@ -626,6 +626,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.composerRichTextEnabled !== DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled
         ? ["Rich text composer"]
         : []),
+      ...(settings.usageLimitsIndicatorEnabled !==
+      DEFAULT_UNIFIED_SETTINGS.usageLimitsIndicatorEnabled
+        ? ["Usage limits in composer"]
+        : []),
       ...(settings.sendShortcut !== DEFAULT_UNIFIED_SETTINGS.sendShortcut ? ["Send shortcut"] : []),
       ...(settings.followUpBehavior !== DEFAULT_UNIFIED_SETTINGS.followUpBehavior
         ? ["Follow-up behavior"]
@@ -705,6 +709,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.confirmThreadUnpin,
       settings.composerCollapseOnScroll,
       settings.composerRichTextEnabled,
+      settings.usageLimitsIndicatorEnabled,
       settings.sendShortcut,
       settings.followUpBehavior,
       settings.addProjectBaseDirectory,
@@ -826,6 +831,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
+      usageLimitsIndicatorEnabled: DEFAULT_UNIFIED_SETTINGS.usageLimitsIndicatorEnabled,
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
@@ -2768,6 +2774,34 @@ export function GeneralSettingsPanel() {
                 updateSettings({ composerRichTextEnabled: Boolean(checked) })
               }
               aria-label="Rich text composer"
+            />
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("composer-usage-limits")}
+          description="Show the selected model's 5-hour and weekly limits in the composer."
+          resetAction={
+            settings.usageLimitsIndicatorEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.usageLimitsIndicatorEnabled ? (
+              <SettingResetButton
+                label="usage limits in composer"
+                onClick={() =>
+                  updateSettings({
+                    usageLimitsIndicatorEnabled:
+                      DEFAULT_UNIFIED_SETTINGS.usageLimitsIndicatorEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.usageLimitsIndicatorEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ usageLimitsIndicatorEnabled: Boolean(checked) })
+              }
+              aria-label="Usage limits in composer"
             />
           }
         />
