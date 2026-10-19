@@ -1,12 +1,15 @@
 import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
 import {
+  formatDuration,
   formatResetsIn,
   limitsNotice,
+  resetMillis,
   type UsageLimitsIndicator,
 } from "@t3tools/shared/usageLimits";
 import { GaugeIcon } from "lucide-react";
 import { memo } from "react";
 
+import { useNowMinute } from "../../hooks/useNowMinute";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { ensureLocalApi } from "../../localApi";
@@ -15,7 +18,7 @@ import { Button } from "../ui/button";
 import { providerClients } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { LimitWindows, ResetCredits } from "../usage/UsageLimits";
+import { barColor, LimitWindows, ResetCredits } from "../usage/UsageLimits";
 import { ComposerBanner } from "./ComposerBanner";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 
@@ -142,18 +145,22 @@ function UsageLimitsBannerBody({
   );
 }
 
-function UsageLimitsIndicatorDetails({ indicator }: { readonly indicator: UsageLimitsIndicator }) {
+function UsageLimitsIndicatorDetails({
+  indicator,
+  now,
+}: {
+  readonly indicator: UsageLimitsIndicator;
+  readonly now: number;
+}) {
   const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
-  // Read when the tooltip opens so countdowns are current without a ticking timer.
-  const now = Date.now();
   return (
     <div className="flex flex-col gap-1">
-      {indicator.windows.map(({ window, remainingPercent }) => {
+      {indicator.windows.map(({ window, usedPercent }) => {
         const resetsIn = formatResetsIn(window, now);
         return (
           <span key={window.id} className="flex flex-col tabular-nums">
             <span className="text-foreground">
-              {window.label}: {remainingPercent}% left
+              {window.label}: {usedPercent}% used
             </span>
             {window.resetsAt ? (
               <span className="text-muted-foreground">
@@ -171,20 +178,21 @@ function UsageLimitsIndicatorDetails({ indicator }: { readonly indicator: UsageL
   );
 }
 
+/** A status line under the composer: label, used bar, used share and time to reset per window. */
 export const ComposerUsageLimitsIndicator = memo(function ComposerUsageLimitsIndicator({
   indicator,
-  compact,
   open,
   onToggle,
 }: {
   readonly indicator: UsageLimitsIndicator;
-  readonly compact: boolean;
   readonly open: boolean;
   readonly onToggle: () => void;
 }) {
-  const shown = compact ? indicator.windows.slice(0, 1) : indicator.windows;
+  // Countdowns follow the shared minute clock instead of a timer of their own.
+  const now = Date.parse(`${useNowMinute()}Z`);
+  const color = barColor(indicator.driver);
   const summary = indicator.windows
-    .map(({ window, remainingPercent }) => `${window.label} ${remainingPercent}% left`)
+    .map(({ window, usedPercent }) => `${window.label} ${usedPercent}% used`)
     .join(", ");
   return (
     <Tooltip>
@@ -203,21 +211,36 @@ export const ComposerUsageLimitsIndicator = memo(function ComposerUsageLimitsInd
       >
         <span
           className={cn(
-            "flex items-center gap-1 whitespace-nowrap tabular-nums",
+            "flex items-center gap-2 whitespace-nowrap tabular-nums",
             indicator.stale && "opacity-50",
           )}
         >
-          <GaugeIcon aria-hidden />
-          {shown.map(({ window, shortLabel, remainingPercent }, index) => (
-            <span key={window.id}>
-              {index > 0 ? "· " : ""}
-              {shortLabel} {remainingPercent}%
-            </span>
-          ))}
+          {indicator.windows.map(({ window, shortLabel, usedPercent }, index) => {
+            const resetsAt = resetMillis(window);
+            return (
+              <span key={window.id} className="flex items-center gap-1.5">
+                {index > 0 ? <span aria-hidden>·</span> : null}
+                <span>{shortLabel}</span>
+                <span
+                  aria-hidden
+                  className="relative h-1.5 w-12 overflow-hidden rounded-full bg-muted"
+                >
+                  <span
+                    className="absolute inset-y-0 left-0 rounded-full"
+                    style={{ width: `${usedPercent}%`, backgroundColor: color }}
+                  />
+                </span>
+                <span className="font-medium text-foreground">{usedPercent}%</span>
+                {resetsAt !== null && resetsAt > now ? (
+                  <span className="hidden sm:inline">{formatDuration(resetsAt - now)}</span>
+                ) : null}
+              </span>
+            );
+          })}
         </span>
       </TooltipTrigger>
       <TooltipPopup side="top">
-        <UsageLimitsIndicatorDetails indicator={indicator} />
+        <UsageLimitsIndicatorDetails indicator={indicator} now={now} />
       </TooltipPopup>
     </Tooltip>
   );

@@ -1493,16 +1493,16 @@ describe("usageLimitsIndicator", () => {
     notices: [],
   });
 
-  it("shows the session window before the first weekly one as remaining percent", () => {
+  it("shows the session window before the first weekly one as used percent", () => {
     const indicator = usageLimitsIndicator(report([account()]), instanceId, now);
     expect(
-      indicator?.windows.map(({ window, shortLabel, remainingPercent }) => [
+      indicator?.windows.map(({ window, shortLabel, usedPercent }) => [
         window.id,
         shortLabel,
-        remainingPercent,
+        usedPercent,
       ]),
     ).toEqual([
-      ["five_hour", "5h", 42],
+      ["five_hour", "5h", 58],
       ["seven_day_opus", "W", 50],
     ]);
     expect(indicator?.stale).toBe(false);
@@ -1543,9 +1543,9 @@ describe("usageLimitsIndicator", () => {
     });
     expect(
       usageLimitsIndicator(report([monthly]), instanceId, now)?.windows.map(
-        ({ window, shortLabel, remainingPercent }) => [window.id, shortLabel, remainingPercent],
+        ({ window, shortLabel, usedPercent }) => [window.id, shortLabel, usedPercent],
       ),
-    ).toEqual([["month", "Monthly", 70]]);
+    ).toEqual([["month", "Monthly", 30]]);
   });
 
   it("marks kept reads after a failed probe or a passed reset as stale", () => {

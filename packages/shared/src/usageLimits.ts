@@ -483,7 +483,7 @@ export function remainingPercent(window: ServerProviderUsageWindow): number {
   return Math.round(100 - Math.max(0, Math.min(100, window.usedPercent)));
 }
 
-function resetMillis(window: ServerProviderUsageWindow): number | null {
+export function resetMillis(window: ServerProviderUsageWindow): number | null {
   if (window.resetsAt === undefined) return null;
   const at = Date.parse(window.resetsAt);
   return Number.isFinite(at) ? at : null;
@@ -699,10 +699,11 @@ export function collectProviderUsageLimits(
 export interface UsageLimitsIndicatorWindow {
   readonly window: ServerProviderUsageWindow;
   readonly shortLabel: string;
-  readonly remainingPercent: number;
+  readonly usedPercent: number;
 }
 
 export interface UsageLimitsIndicator {
+  readonly driver: ServerProvider["driver"];
   readonly windows: readonly UsageLimitsIndicatorWindow[];
   /** The last good read is kept after a failed probe or once a shown window has reset. */
   readonly stale: boolean;
@@ -745,10 +746,11 @@ export function usageLimitsIndicator(
           .sort((left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind])
           .slice(0, 1);
   return {
+    driver: account.driver,
     windows: shown.map((window) => ({
       window,
       shortLabel: shortWindowLabel(window),
-      remainingPercent: remainingPercent(window),
+      usedPercent: 100 - remainingPercent(window),
     })),
     stale:
       account.limits.unavailable?.reason === "probeFailed" ||

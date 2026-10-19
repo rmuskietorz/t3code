@@ -7274,14 +7274,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       </Tooltip>
                     </>
                   ) : null}
-                  {props.usageLimitsIndicator ? (
-                    <ComposerUsageLimitsIndicator
-                      indicator={props.usageLimitsIndicator}
-                      compact={isComposerResting || isComposerFooterCompact}
-                      open={props.usageLimitsOpen}
-                      onToggle={props.onToggleUsageLimits}
-                    />
-                  ) : null}
                   <ComposerFooterPrimaryActions
                     compact={isComposerResting || isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
@@ -7365,6 +7357,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           </div>
         </ComposerSurface.Main>
       </div>
+      {props.usageLimitsIndicator ? (
+        <div className="flex justify-end px-1 pt-1">
+          <ComposerUsageLimitsIndicator
+            indicator={props.usageLimitsIndicator}
+            open={props.usageLimitsOpen}
+            onToggle={props.onToggleUsageLimits}
+          />
+        </div>
+      ) : null}
     </form>
   );
 });
