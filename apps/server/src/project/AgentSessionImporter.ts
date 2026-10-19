@@ -38,6 +38,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import * as EventSink from "../orchestration-v2/EventSink.ts";
+import * as EventStore from "../orchestration-v2/EventStore.ts";
 import { importedNativeHistoryResumes } from "../orchestration-v2/importedNativeHistory.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -185,6 +186,7 @@ const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const projects = yield* ProjectService.ProjectService;
   const eventSink = yield* EventSink.EventSinkV2;
+  const eventStore = yield* EventStore.EventStoreV2;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const runtimes = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
@@ -260,6 +262,26 @@ const make = Effect.gen(function* () {
               providerSessionId: thread.providerSessionId,
             });
           }
+          const driver = ProviderDriverKind.make(thread.source);
+          // recordImportedTranscript only updates an existing row, so without
+          // one a re-import never sees the transcript as already imported.
+          const ensureRuntime = runtimes.upsert(
+            {
+              threadId,
+              providerName: driver,
+              providerInstanceId: thread.providerInstanceId,
+              adapterKey: driver,
+              runtimeMode: DEFAULT_RUNTIME_MODE,
+              status: "stopped",
+              lastSeenAt: thread.updatedAt,
+              resumeCursor:
+                thread.source === "codex"
+                  ? { threadId: thread.providerSessionId }
+                  : { threadId, resume: thread.providerSessionId },
+              runtimePayload: { cwd: project.workspaceRoot },
+            },
+            { onConflict: "ignore" },
+          );
           const existing = yield* Effect.option(orchestrator.getThreadRecords(threadId, []));
           if (Option.isSome(existing)) {
             if (existing.value.thread.projectId !== project.id) {
@@ -276,23 +298,26 @@ const make = Effect.gen(function* () {
             // thread, its history still mirrors the transcript, so show what was added.
             // A reload from the session hides earlier T3 runs and restores that state.
             const { runs } = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
-            if (runs.every((run) => run.status === "rolled_back")) {
+            const revision = `${source.size}-${source.mtimeMs}`;
+            // A refresh that landed without being recorded ends the thread's
+            // events; writing its event ids again would fail the whole import.
+            const latest = yield* eventStore.latestSequence({ threadId });
+            const [lastEvent] = yield* Stream.runCollect(
+              eventStore.read({ threadId, afterSequence: latest - 1, limit: 1 }),
+            );
+            const alreadyRefreshed = lastEvent?.event.id.endsWith(`:rev:${revision}`) ?? false;
+            if (!alreadyRefreshed && runs.every((run) => run.status === "rolled_back")) {
               yield* eventSink.write({
                 events: thread.messages.flatMap((message, index) =>
-                  messageEvents({
-                    threadId,
-                    index,
-                    message,
-                    revision: `${source.size}-${source.mtimeMs}`,
-                  }),
+                  messageEvents({ threadId, index, message, revision }),
                 ),
               });
             }
+            yield* ensureRuntime;
             yield* runtimes.recordImportedTranscript({ threadId, source });
             return "updated" as const;
           }
 
-          const driver = ProviderDriverKind.make(thread.source);
           const model = thread.model ?? DEFAULT_MODEL_BY_PROVIDER[driver] ?? DEFAULT_MODEL;
           // Native and imported threads derive the same provider thread id from the
           // session, so writing one here would take over a thread T3 is running.
@@ -365,23 +390,7 @@ const make = Effect.gen(function* () {
             updatedAt,
           };
 
-          yield* runtimes.upsert(
-            {
-              threadId,
-              providerName: driver,
-              providerInstanceId: thread.providerInstanceId,
-              adapterKey: driver,
-              runtimeMode: DEFAULT_RUNTIME_MODE,
-              status: "stopped",
-              lastSeenAt: thread.updatedAt,
-              resumeCursor:
-                thread.source === "codex"
-                  ? { threadId: thread.providerSessionId }
-                  : { threadId, resume: thread.providerSessionId },
-              runtimePayload: { cwd: project.workspaceRoot },
-            },
-            { onConflict: "ignore" },
-          );
+          yield* ensureRuntime;
           yield* eventSink.write({
             events: [
               {

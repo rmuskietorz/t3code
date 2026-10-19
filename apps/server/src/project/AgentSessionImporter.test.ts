@@ -13,6 +13,7 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import * as EventSink from "../orchestration-v2/EventSink.ts";
+import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
@@ -125,6 +126,16 @@ const makeImporterTest = (
               return [];
             }),
         }),
+        Layer.mock(EventStore.EventStoreV2)({
+          latestSequence: () => Effect.sync(() => writes.flat().length),
+          read: () =>
+            Stream.fromIterable(
+              writes
+                .flat()
+                .slice(-1)
+                .map((event) => ({ sequence: 0, commandId: null, event })),
+            ),
+        }),
         Layer.mock(ProviderSessionRuntime.ProviderSessionRuntimeRepository)({
           list: () => Effect.succeed([]),
           upsert: (input) => Effect.sync(() => void upserts.push(input)),
@@ -180,13 +191,13 @@ it.effect("imports messages once and preserves the provider native resume bindin
         ?.filter((event) => event.type === "message.updated")
         .map((event) => event.payload.text),
     ).toEqual(["Fix it", "Fixed"]);
-    expect(upserts).toEqual([
-      expect.objectContaining({
-        threadId,
-        providerInstanceId,
-        resumeCursor: { threadId: providerSessionId },
-      }),
-    ]);
+    // The second run re-ensures the row, which the repository ignores on conflict.
+    const runtimeRow = expect.objectContaining({
+      threadId,
+      providerInstanceId,
+      resumeCursor: { threadId: providerSessionId },
+    });
+    expect(upserts).toEqual([runtimeRow, runtimeRow]);
     expect(recorded).toHaveLength(2);
   }).pipe(Effect.provide(layer));
 });
@@ -218,6 +229,22 @@ it.effect("refreshes an imported thread the terminal continued while T3 has not"
     expect(new Set([...writes[0]!, ...refresh].map((event) => event.id)).size).toBe(
       writes[0]!.length + refresh.length,
     );
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("does not write a refresh again when it landed but was never recorded", () => {
+  const { layer, writes, upserts } = makeImporterTest({ continuedInT3: false });
+
+  return Effect.gen(function* () {
+    const importer = yield* AgentSessionImporter.AgentSessionImporter;
+    // The scanner keeps offering the unchanged transcript, as it does for a
+    // thread carried over from another install without a runtime row.
+    yield* importer.importRecentAgentThreads({ projectId });
+    yield* importer.importRecentAgentThreads({ projectId });
+    yield* importer.importRecentAgentThreads({ projectId });
+
+    expect(writes).toHaveLength(2);
+    expect(upserts).toHaveLength(3);
   }).pipe(Effect.provide(layer));
 });
 
@@ -358,6 +385,7 @@ const makeReloadTest = (
               return [];
             }),
         }),
+        Layer.mock(EventStore.EventStoreV2)({}),
         Layer.mock(ProviderSessionRuntime.ProviderSessionRuntimeRepository)({
           getByThreadId: () =>
             Effect.succeed(
