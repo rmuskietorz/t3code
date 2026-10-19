@@ -15,6 +15,7 @@ import {
   useCustomProjectGroups,
   useCustomProjectGroupsEnabled,
 } from "./hooks/useCustomProjectGroups";
+import { readSplitViewHost } from "./splitViewHost";
 
 export const ALL_SIDEBAR_PROFILE_KEY = "all";
 
@@ -116,6 +117,7 @@ const useSidebarProfileStore = create<SidebarProfileStore>((set) => ({
   setKey: (key) => {
     writeProfileKey(browserStorage("sessionStorage"), SESSION_PROFILE_KEY, key);
     writeProfileKey(browserStorage("localStorage"), LAST_PROFILE_KEY, key);
+    readSplitViewHost()?.reportSidebarProfile?.(key);
     set({ key });
   },
 }));

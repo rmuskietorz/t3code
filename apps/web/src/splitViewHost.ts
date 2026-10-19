@@ -17,6 +17,12 @@ export interface SplitViewHost {
   readonly minimizeThisPane: () => void;
   /** Opens an in-app path in a new shell window. */
   readonly openInNewWindow: (path: string) => void;
+  /**
+   * Tells the shell which sidebar profile this pane shows. The pane keeps it in
+   * sessionStorage, which the shell's pane dies with, so the shell saves it to
+   * reopen the pane on it. Optional, because older shells lack it.
+   */
+  readonly reportSidebarProfile?: (key: string) => void;
   readonly isSplit: () => boolean;
   readonly subscribe: (onChange: () => void) => () => void;
 }
