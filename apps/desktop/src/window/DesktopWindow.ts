@@ -39,6 +39,7 @@ import { SplitSession } from "./SplitSession.ts";
 import {
   defaultSplitWindowState,
   installSplitViewIpc,
+  NEUTRAL_PATH,
   SplitView,
   type SplitWindowState,
 } from "./SplitView.ts";
@@ -348,6 +349,7 @@ export const make = Effect.gen(function* () {
   const splitSession = new SplitSession(
     environment.path.join(environment.stateDir, "split-session.json"),
     (message, cause) => void runPromise(logWindowWarning(message, { cause })),
+    (message, details) => void runPromise(logWindowInfo(message, details)),
   );
   if (environment.splitView) {
     installSplitViewIpc();
@@ -850,7 +852,7 @@ export const make = Effect.gen(function* () {
             installRendererHooks(view.webContents);
             return view;
           },
-          openWindow: (path) => void runPromise(openWindow(path)),
+          openWindow: (path) => runFork(openWindowLogged(path)),
           onStateChange: () => splitSession.save(),
         })
       : null;
@@ -921,6 +923,26 @@ export const make = Effect.gen(function* () {
     }
     return yield* createWindow({ state, initialPath: path, isMain: false });
   });
+
+  const openWindowLogged = (path: string) =>
+    openWindow(path).pipe(
+      Effect.asVoid,
+      Effect.catchCause((cause) => logWindowWarning("failed to open another window", { cause })),
+    );
+
+  if (environment.splitView) {
+    // Launching the app again opens another window, as a browser does. Links
+    // handed to the app arrive through their own handlers instead.
+    Electron.app.on("second-instance", (_event, argv) => {
+      if (argv.some((value) => value.includes("://"))) return;
+      runFork(
+        Effect.gen(function* () {
+          if (Option.isNone(yield* currentMainWindow)) return;
+          yield* openWindowLogged(NEUTRAL_PATH);
+        }),
+      );
+    });
+  }
 
   // Every window of the saved split session comes back; the first is the main one.
   const createMain = Effect.gen(function* () {

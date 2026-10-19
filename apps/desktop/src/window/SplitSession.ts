@@ -28,6 +28,7 @@ export interface RestoredSession {
 export class SplitSession {
   private readonly filePath: string;
   private readonly warn: (message: string, cause: unknown) => void;
+  private readonly info: (message: string, details: Record<string, unknown>) => void;
   /** Open windows, oldest first; this order is the saved order. */
   private readonly open: SplitView[] = [];
   private recentlyClosed: { readonly state: SplitWindowState; readonly closedAt: number }[] = [];
@@ -36,9 +37,14 @@ export class SplitSession {
   private quitting = false;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(filePath: string, warn: (message: string, cause: unknown) => void) {
+  constructor(
+    filePath: string,
+    warn: (message: string, cause: unknown) => void,
+    info: (message: string, details: Record<string, unknown>) => void = () => {},
+  ) {
     this.filePath = filePath;
     this.warn = warn;
+    this.info = info;
   }
 
   read(): RestoredSession {
@@ -125,6 +131,11 @@ export class SplitSession {
     };
     try {
       NodeFS.writeFileSync(this.filePath, JSON.stringify(session, null, 2));
+      this.info("split session saved", {
+        open: open.length,
+        recentlyClosed: closed.length,
+        quitting: withRecentlyClosed,
+      });
     } catch (cause) {
       this.warn("could not save the split session", cause);
     }
