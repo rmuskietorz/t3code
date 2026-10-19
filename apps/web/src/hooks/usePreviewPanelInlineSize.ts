@@ -34,6 +34,7 @@ export function usePreviewPanelInlineSize(
     minWidth: PREVIEW_PANEL_MIN_WIDTH,
     maxWidth,
     edge: "left",
+    snapToWindowCenter: true,
   });
 }
 

@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import {
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useLayoutEffect,
@@ -23,6 +24,32 @@ export interface UseResizableWidthOptions {
   readonly minWidth: number;
   readonly maxWidth: number;
   readonly edge: "left" | "right";
+  /** Let the dragged edge settle on the window's horizontal middle. */
+  readonly snapToWindowCenter?: boolean;
+}
+
+const WINDOW_CENTER_SNAP_THRESHOLD_PX = 20;
+
+/**
+ * The width that puts the dragged edge on the window's middle, or null when
+ * the bounds rule it out. `anchor` is the x of the host's fixed side.
+ */
+export function windowCenterWidth(input: {
+  readonly anchor: number;
+  readonly viewportWidth: number;
+  readonly edge: "left" | "right";
+  readonly minWidth: number;
+  readonly maxWidth: number;
+}): number | null {
+  const center = input.viewportWidth / 2;
+  const width = Math.round(input.edge === "left" ? input.anchor - center : center - input.anchor);
+  return width >= input.minWidth && width <= input.maxWidth ? width : null;
+}
+
+export function snapToWindowCenter(width: number, centerWidth: number | null): number {
+  return centerWidth !== null && Math.abs(width - centerWidth) <= WINDOW_CENTER_SNAP_THRESHOLD_PX
+    ? centerWidth
+    : width;
 }
 
 export interface ResizableWidthHandlers {
@@ -31,6 +58,7 @@ export interface ResizableWidthHandlers {
   readonly onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
   readonly onPointerCancel: (event: ReactPointerEvent<HTMLElement>) => void;
   readonly onLostPointerCapture: (event: ReactPointerEvent<HTMLElement>) => void;
+  readonly onDoubleClick?: (event: ReactMouseEvent<HTMLElement>) => void;
 }
 
 /**
@@ -42,6 +70,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
   readonly handlers: ResizableWidthHandlers;
 } {
   const { storageKey, defaultWidth, minWidth, maxWidth, edge } = options;
+  const snapsToWindowCenter = options.snapToWindowCenter ?? false;
 
   const clamp = useCallback(
     (value: number): number => {
@@ -72,8 +101,31 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
     latestOptions.current = { clamp, storageKey, width: clampedWidth };
   }, [clamp, clampedWidth, storageKey]);
 
-  const { refresh, ...handlers } = useResizeDrag<HTMLElement>((event) => {
+  const commitWidth = (nextStorageKey: string, nextWidth: number) => {
+    setWidthState({ storageKey: nextStorageKey, width: nextWidth });
+    try {
+      setLocalStorageItem(nextStorageKey, nextWidth, WidthSchema);
+    } catch (error) {
+      console.error("Could not persist panel width.", error);
+    }
+  };
+  const centerWidthFor = (host: HTMLElement | null) => {
+    if (!snapsToWindowCenter || !host) return null;
+    const rect = host.getBoundingClientRect();
+    return windowCenterWidth({
+      anchor: edge === "left" ? rect.right : rect.left,
+      viewportWidth: window.innerWidth,
+      edge,
+      minWidth,
+      maxWidth,
+    });
+  };
+  // The width a double-click centered from, so a second one goes back to it.
+  const widthBeforeCenter = useRef<number | null>(null);
+
+  const { refresh, ...dragHandlers } = useResizeDrag<HTMLElement>((event) => {
     const host = event.currentTarget.parentElement;
+    const centerWidth = centerWidthFor(host);
     // A collapsible host animates width; live drag writes must not. The host
     // renders its own transition-duration, so override a property it leaves alone.
     host?.style.setProperty("transition-property", "none");
@@ -81,17 +133,13 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
       width: clampedWidth,
       edge,
       resize(value) {
-        const nextWidth = latestOptions.current.clamp(value);
+        const nextWidth = latestOptions.current.clamp(snapToWindowCenter(value, centerWidth));
         host?.style.setProperty(RESIZABLE_WIDTH_PROPERTY, `${nextWidth}px`);
         return nextWidth;
       },
-      finish(finalWidth) {
-        setWidthState({ storageKey, width: finalWidth });
-        try {
-          setLocalStorageItem(latestOptions.current.storageKey, finalWidth, WidthSchema);
-        } catch (error) {
-          console.error("Could not persist panel width.", error);
-        }
+      finish(finalWidth, moved) {
+        if (moved) widthBeforeCenter.current = null;
+        commitWidth(storageKey, finalWidth);
       },
       cleanup(committed) {
         host?.style.removeProperty("transition-property");
@@ -102,6 +150,25 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
       },
     };
   }, storageKey);
+
+  const handlers: ResizableWidthHandlers = snapsToWindowCenter
+    ? {
+        ...dragHandlers,
+        onDoubleClick(event) {
+          const centerWidth = centerWidthFor(event.currentTarget.parentElement);
+          if (centerWidth === null) return;
+          const current = latestOptions.current.width;
+          if (current === centerWidth) {
+            const previous = widthBeforeCenter.current ?? defaultWidth;
+            widthBeforeCenter.current = null;
+            commitWidth(storageKey, latestOptions.current.clamp(previous));
+            return;
+          }
+          widthBeforeCenter.current = current;
+          commitWidth(storageKey, centerWidth);
+        },
+      }
+    : dragHandlers;
 
   // Bounds can change mid-drag (sidebar opens, window narrows) and the render
   // rewrites the committed width, so re-apply the live pointer position.
