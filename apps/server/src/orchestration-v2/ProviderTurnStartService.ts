@@ -23,6 +23,7 @@ import * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
+import { importedNativeHistoryResumes } from "./importedNativeHistory.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -1222,7 +1223,12 @@ export const layer: Layer.Layer<
           nativeInputRunIds.size > 0 ||
           (legacyInputRunIds.size > 0 &&
             sameNativeThread &&
-            !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
+            !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)) ||
+          importedNativeHistoryResumes({
+            historyOrigin: projection.thread.historyOrigin,
+            providerThread: runningProviderThread,
+            providerInstanceId: run.modelSelection.instanceId,
+          }),
         shouldStartProviderTurn: runControls.shouldStartProviderTurn,
         shouldFinalizeRun: runControls.shouldFinalizeRun,
         hasUnpairedRunInterruptRequest: runControls.hasUnpairedRunInterruptRequest,

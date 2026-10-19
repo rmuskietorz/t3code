@@ -78,6 +78,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import { importedNativeHistoryResumes } from "./importedNativeHistory.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import {
   isCheckpointRestoreIsolated,
@@ -742,9 +743,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
   readonly hasCompletedRun: boolean;
   readonly historyOrigin: OrchestrationV2AppThread["historyOrigin"];
   readonly legacyImportItemCount: number;
+  /** The provider resumes a conversation that already holds the imported history. */
+  readonly resumesNativeHistory: boolean;
 }): boolean {
   return (
-    input.historyOrigin === "v1_import" && !input.hasCompletedRun && input.legacyImportItemCount > 0
+    input.historyOrigin === "v1_import" &&
+    !input.hasCompletedRun &&
+    input.legacyImportItemCount > 0 &&
+    !input.resumesNativeHistory
   );
 }
 
@@ -5286,6 +5292,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           historyOrigin: projection.thread.historyOrigin,
           hasCompletedRun: latestCompletedRun !== undefined,
           legacyImportItemCount: legacyImportItems.length,
+          resumesNativeHistory: importedNativeHistoryResumes({
+            historyOrigin: projection.thread.historyOrigin,
+            providerThread: activeProviderThread,
+            providerInstanceId: modelSelection.instanceId,
+          }),
         })
           ? yield* contextHandoffService
               .prepareLegacyImport({
