@@ -2685,6 +2685,8 @@ const layerWsRpc = (
           agentSessionImporter.importRecentAgentThreads(input),
         [WS_METHODS.agentSessionsImportAll]: () =>
           agentSessionImporter.importAllProjects({ quietPeriodMs: 0 }),
+        [WS_METHODS.agentSessionsReloadThread]: (input) =>
+          agentSessionImporter.reloadImportedThread(input),
         [WS_METHODS.assetsCreateUrl]: (input) =>
           Effect.gen(function* () {
             const path = yield* Path.Path;

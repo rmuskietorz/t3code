@@ -1,9 +1,11 @@
 import { expect, it } from "@effect/vitest";
 import {
+  AgentSessionReloadError,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
   type OrchestrationV2DomainEvent,
+  type OrchestrationV2ServerCommand,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -62,6 +64,8 @@ const makeImporterTest = (
     readonly providerThreadOwner?: ThreadId;
     /** Whether T3 already ran turns on the imported thread. */
     readonly continuedInT3?: boolean;
+    /** Status of that T3 run; a reload from the session marks it rolled back. */
+    readonly runStatus?: string;
   } = {},
 ) => {
   const writes: Array<ReadonlyArray<OrchestrationV2DomainEvent>> = [];
@@ -75,6 +79,7 @@ const makeImporterTest = (
   let imported = false;
   const scanner = AgentSessionScanner.AgentSessionScanner.of({
     scan: Effect.die("unused"),
+    readImportedTranscript: () => Effect.die("unused"),
     refreshCandidates: Effect.sync(() => void (refreshCount += 1)),
     recentThreads: (_workspaceRoot, _completed, options: RecentThreadsOptions) => {
       const excluded = [...(options?.excludedTranscripts ?? [])];
@@ -101,7 +106,10 @@ const makeImporterTest = (
             imported
               ? Effect.succeed({
                   thread: { id: threadId, projectId, historyOrigin: "v1_import" },
-                  runs: (input.continuedInT3 ?? true) ? [{ id: "run-1" }] : [],
+                  runs:
+                    (input.continuedInT3 ?? true)
+                      ? [{ id: "run-1", status: input.runStatus ?? "completed" }]
+                      : [],
                 } as never)
               : Effect.fail(new Orchestrator.OrchestratorProjectionError({ threadId })),
         }),
@@ -213,6 +221,28 @@ it.effect("refreshes an imported thread the terminal continued while T3 has not"
   }).pipe(Effect.provide(layer));
 });
 
+it.effect("keeps refreshing from the terminal after a reload hid the T3 runs", () => {
+  const { layer, writes } = makeImporterTest({ runStatus: "rolled_back" });
+
+  return Effect.gen(function* () {
+    const importer = yield* AgentSessionImporter.AgentSessionImporter;
+    yield* importer.importRecentAgentThreads({ projectId });
+    yield* importer.importRecentAgentThreads({ projectId });
+    expect(writes).toHaveLength(2);
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("stops refreshing once T3 ran a turn on the imported thread", () => {
+  const { layer, writes } = makeImporterTest({ runStatus: "completed" });
+
+  return Effect.gen(function* () {
+    const importer = yield* AgentSessionImporter.AgentSessionImporter;
+    yield* importer.importRecentAgentThreads({ projectId });
+    yield* importer.importRecentAgentThreads({ projectId });
+    expect(writes).toHaveLength(1);
+  }).pipe(Effect.provide(layer));
+});
+
 it.effect("leaves a session alone when another thread already owns its provider thread", () => {
   const { layer, writes, recorded, scanOptions } = makeImporterTest({
     providerThreadOwner: ThreadId.make("thread-started-in-t3"),
@@ -256,3 +286,144 @@ it.effect("re-imports every project and counts only the threads it created", () 
     expect(scanOptions.map((options) => options.quietPeriodMs)).toEqual([600_000, 600_000]);
   }).pipe(Effect.provide(layer));
 });
+
+const grownMessages = [
+  ...importableOutcome.thread.messages,
+  { role: "user" as const, text: "Continue in T3", createdAt: "2026-09-01T10:02:00.000Z" },
+  { role: "assistant" as const, text: "Continued", createdAt: "2026-09-01T10:03:00.000Z" },
+];
+
+const makeReloadTest = (
+  input: {
+    readonly historyOrigin?: "v1_import" | "native";
+    readonly runStatus?: string;
+    readonly recorded?: boolean;
+    readonly transcript?: AgentSessionScanner.AgentSessionTranscriptRead;
+  } = {},
+) => {
+  const dispatched: Array<OrchestrationV2ServerCommand> = [];
+  const writes: Array<ReadonlyArray<OrchestrationV2DomainEvent>> = [];
+  const recorded: Array<unknown> = [];
+  const grownSource = { ...importableOutcome.source, size: 400, mtimeMs: 9 };
+  const layer = AgentSessionImporter.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(AgentSessionScanner.AgentSessionScanner)({
+          readImportedTranscript: () =>
+            Effect.succeed(
+              input.transcript ?? {
+                _tag: "Read",
+                thread: { ...importableOutcome.thread, messages: grownMessages },
+                source: grownSource,
+              },
+            ),
+        }),
+        Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(Orchestrator.OrchestratorV2)({
+          getThreadRecords: () =>
+            Effect.succeed({
+              thread: {
+                id: threadId,
+                projectId,
+                historyOrigin: input.historyOrigin ?? "v1_import",
+                activeProviderThreadId: "provider-thread-1",
+                modelSelection: { instanceId: providerInstanceId, model: "gpt-5.4" },
+                deletedAt: null,
+              },
+              runs: [{ id: "run-1", status: input.runStatus ?? "completed" }],
+              providerThreads: [
+                {
+                  id: "provider-thread-1",
+                  providerInstanceId,
+                  status: "idle",
+                  nativeThreadRef: {
+                    driver: "codex",
+                    nativeId: providerSessionId,
+                    strength: "strong",
+                  },
+                },
+              ],
+            } as never),
+          dispatch: (command) =>
+            Effect.sync(() => {
+              dispatched.push(command);
+              return { sequence: 1, storedEvents: [] } as never;
+            }),
+        }),
+        Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
+        Layer.mock(EventSink.EventSinkV2)({
+          write: (input) =>
+            Effect.sync(() => {
+              writes.push(input.events);
+              return [];
+            }),
+        }),
+        Layer.mock(ProviderSessionRuntime.ProviderSessionRuntimeRepository)({
+          getByThreadId: () =>
+            Effect.succeed(
+              (input.recorded ?? true)
+                ? Option.some({
+                    runtimePayload: {
+                      cwd: "/workspace/project",
+                      importedTranscripts: [importableOutcome.source],
+                    },
+                  } as never)
+                : Option.none(),
+            ),
+          recordImportedTranscript: (input) => Effect.sync(() => void recorded.push(input)),
+        }),
+        IdAllocator.layer,
+      ),
+    ),
+  );
+  return { layer, dispatched, writes, recorded, grownSource };
+};
+
+it.effect("reloads a thread continued in T3 from its session transcript", () => {
+  const { layer, dispatched, writes, recorded, grownSource } = makeReloadTest();
+
+  return Effect.gen(function* () {
+    const importer = yield* AgentSessionImporter.AgentSessionImporter;
+    expect(yield* importer.reloadImportedThread({ threadId })).toEqual({ messageCount: 4 });
+
+    expect(dispatched).toEqual([
+      expect.objectContaining({ type: "thread.history.reload-from-native", threadId }),
+    ]);
+    expect(writes).toHaveLength(1);
+    const messages = writes[0]!.flatMap((event) =>
+      event.type === "message.updated" ? [event.payload] : [],
+    );
+    expect(messages.map((message) => message.text)).toEqual(grownMessages.map((m) => m.text));
+    // Positional ids, so the reload overwrites the imported messages in place.
+    expect(messages[0]?.id).toBe(`${threadId}:000000`);
+    expect(writes[0]!.every((event) => event.id.includes(":rev:"))).toBe(true);
+    expect(recorded).toEqual([{ threadId, source: grownSource }]);
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("refuses to reload threads it cannot rebuild from a session", () =>
+  Effect.gen(function* () {
+    const cases = [
+      [{ historyOrigin: "native" as const }, "not-imported"],
+      [{ runStatus: "running" }, "busy"],
+      [{ runStatus: "queued" }, "busy"],
+      [{ recorded: false }, "transcript-missing"],
+      [{ transcript: { _tag: "Missing" as const } }, "transcript-missing"],
+      [{ transcript: { _tag: "Unreadable" as const } }, "transcript-unreadable"],
+    ] as const;
+    for (const [options, reason] of cases) {
+      const { layer, dispatched, writes } = makeReloadTest(options);
+      const error = yield* Effect.flip(
+        Effect.gen(function* () {
+          const importer = yield* AgentSessionImporter.AgentSessionImporter;
+          return yield* importer.reloadImportedThread({ threadId });
+        }).pipe(Effect.provide(layer)),
+      );
+      expect(error).toBeInstanceOf(AgentSessionReloadError);
+      expect(error.reason).toBe(reason);
+      // Nothing is hidden or rewritten when the reload cannot finish.
+      expect(dispatched).toEqual([]);
+      expect(writes).toEqual([]);
+    }
+  }),
+);

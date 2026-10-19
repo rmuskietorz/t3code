@@ -102,6 +102,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { readCanReloadThreadFromSession, useThreadActions } from "../hooks/useThreadActions";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import {
@@ -134,6 +135,7 @@ import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useScratchProject } from "../hooks/useScratchProject";
 import { useNewProject } from "../hooks/useNewProject";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
+import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useAgentSessionReimport } from "../hooks/useAgentSessionReimport";
 import { requestSidebarBulkExpansion } from "../sidebarBulkExpansion";
@@ -650,6 +652,7 @@ function OpenCommandPaletteDialog(props: {
   });
   const { environments } = useEnvironments();
   const sessionReimport = useAgentSessionReimport(environments);
+  const { reloadThreadFromSession } = useThreadActions();
   const desktopLocalBootstraps = useDesktopLocalBootstraps();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const availableSettingsSearchItems = useAvailableSettingsSearchItems();
@@ -2064,6 +2067,21 @@ function OpenCommandPaletteDialog(props: {
         if (refreshed._tag === "Failure") throw squashAtomCommandFailure(refreshed);
       },
     });
+  }
+
+  if (activeThread !== null) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    if (readCanReloadThreadFromSession(threadRef)) {
+      actionItems.push({
+        kind: "action",
+        value: "action:reload-thread-from-session",
+        searchTerms: ["reload", "session", "transcript", "claude", "codex", "import", "history"],
+        title: "Reload thread from session",
+        disabled: !threadRuntimeCanArchive(activeThread.runtime),
+        icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
+        run: () => reloadThreadFromSession(threadRef),
+      });
+    }
   }
 
   if (sessionReimport.supported) {

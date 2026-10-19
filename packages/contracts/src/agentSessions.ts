@@ -1,5 +1,11 @@
 import * as Schema from "effect/Schema";
-import { IsoDateTime, NonNegativeInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  NonNegativeInt,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
 export const AgentSessionSource = Schema.Literals(["claudeAgent", "codex"]);
@@ -96,5 +102,41 @@ export class AgentSessionScanError extends Schema.TaggedError<AgentSessionScanEr
 ) {
   override get message(): string {
     return `Failed to scan agent sessions during ${this.operation}.`;
+  }
+}
+
+export const AgentSessionReloadInput = Schema.Struct({ threadId: ThreadId });
+export type AgentSessionReloadInput = typeof AgentSessionReloadInput.Type;
+
+export const AgentSessionReloadResult = Schema.Struct({ messageCount: NonNegativeInt });
+export type AgentSessionReloadResult = typeof AgentSessionReloadResult.Type;
+
+export class AgentSessionReloadError extends Schema.TaggedError<AgentSessionReloadError>()(
+  "AgentSessionReloadError",
+  {
+    threadId: ThreadId,
+    reason: Schema.Literals([
+      "not-imported",
+      "busy",
+      "transcript-missing",
+      "transcript-unreadable",
+      "failed",
+    ]),
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    switch (this.reason) {
+      case "not-imported":
+        return "This thread was not imported from a Claude Code or Codex session.";
+      case "busy":
+        return "Stop the thread's running work before reloading it from its session.";
+      case "transcript-missing":
+        return "The session transcript no longer exists.";
+      case "transcript-unreadable":
+        return "The session transcript could not be read.";
+      case "failed":
+        return "The thread could not be reloaded from its session.";
+    }
   }
 }

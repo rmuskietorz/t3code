@@ -3,8 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
+  isAgentSessionImportThread,
   type ThreadActionMenuState,
 } from "./threadActionMenu.logic";
+import { ThreadId } from "@t3tools/contracts";
 
 const baseState: ThreadActionMenuState = {
   canOperate: true,
@@ -19,6 +21,7 @@ const baseState: ThreadActionMenuState = {
   canSnoozeNow: true,
   isRegeneratingTitle: false,
   isRunning: false,
+  canReloadFromSession: false,
   supports: {
     settlement: true,
     autoSettleOptOut: true,
@@ -249,6 +252,28 @@ describe("buildThreadActionMenuItems", () => {
       (item) => item.id === "archive",
     );
     expect(archiveItem?.disabled).toBe(true);
+  });
+  it("offers reloading from the session only for capable imports, before archive", () => {
+    expect(ids(baseState)).not.toContain("reload-from-session");
+    const reloadable = ids({ ...baseState, canReloadFromSession: true });
+    expect(reloadable.indexOf("reload-from-session")).toBe(reloadable.indexOf("archive") - 1);
+  });
+
+  it("disables reloading from the session while running or without permission", () => {
+    const reloadItem = (state: Partial<ThreadActionMenuState>) =>
+      buildThreadActionMenuItems({ ...baseState, canReloadFromSession: true, ...state }).find(
+        (item) => item.id === "reload-from-session",
+      );
+    expect(reloadItem({})?.disabled).toBe(false);
+    expect(reloadItem({ isRunning: true })?.disabled).toBe(true);
+    expect(reloadItem({ canOperate: false })?.disabled).toBe(true);
+  });
+});
+
+describe("isAgentSessionImportThread", () => {
+  it("recognizes threads the agent session importer created", () => {
+    expect(isAgentSessionImportThread(ThreadId.make("import:claudeAgent:62b60885"))).toBe(true);
+    expect(isAgentSessionImportThread(ThreadId.make("thread-started-in-t3"))).toBe(false);
   });
 });
 

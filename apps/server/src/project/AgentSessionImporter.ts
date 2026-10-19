@@ -6,8 +6,10 @@ import {
   AgentSessionImportProjectChangedError,
   AgentSessionImportProjectNotFoundError,
   AgentSessionImportSource,
+  AgentSessionReloadError,
   AgentSessionScanError,
   AgentSessionSource,
+  CommandId,
   EventId,
   MessageId,
   ProjectId,
@@ -17,6 +19,8 @@ import {
   type AgentSessionImportAllResult,
   type AgentSessionImportInput,
   type AgentSessionImportResult,
+  type AgentSessionReloadInput,
+  type AgentSessionReloadResult,
   type OrchestrationV2AppThread,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2DomainEvent,
@@ -34,6 +38,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import * as EventSink from "../orchestration-v2/EventSink.ts";
+import { importedNativeHistoryResumes } from "../orchestration-v2/importedNativeHistory.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
@@ -269,8 +274,9 @@ const make = Effect.gen(function* () {
             }
             // The conversation went on outside T3. Until a T3 run continues the
             // thread, its history still mirrors the transcript, so show what was added.
+            // A reload from the session hides earlier T3 runs and restores that state.
             const { runs } = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
-            if (runs.length === 0) {
+            if (runs.every((run) => run.status === "rolled_back")) {
               yield* eventSink.write({
                 events: thread.messages.flatMap((message, index) =>
                   messageEvents({
@@ -499,7 +505,89 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const reloadImportedThread = Effect.fn("AgentSessionImporter.reloadImportedThread")(function* (
+    input: AgentSessionReloadInput,
+  ) {
+    const { threadId } = input;
+    const fail = (reason: AgentSessionReloadError["reason"]) =>
+      Effect.fail(new AgentSessionReloadError({ threadId, reason }));
+    const failed = (cause: unknown) =>
+      new AgentSessionReloadError({ threadId, reason: "failed", cause });
+
+    const records = yield* Effect.option(
+      orchestrator.getThreadRecords(threadId, ["runs", "providerThreads"]),
+    );
+    if (Option.isNone(records)) return yield* fail("not-imported");
+    const { thread, runs, providerThreads } = records.value;
+    const providerThread = providerThreads.find(
+      (candidate) => candidate.id === thread.activeProviderThreadId,
+    );
+    const nativeId = providerThread?.nativeThreadRef?.nativeId;
+    if (
+      thread.deletedAt !== null ||
+      nativeId == null ||
+      !importedNativeHistoryResumes({
+        historyOrigin: thread.historyOrigin,
+        providerThread,
+        providerInstanceId: thread.modelSelection.instanceId,
+      })
+    ) {
+      return yield* fail("not-imported");
+    }
+    const settled = new Set(["completed", "interrupted", "failed", "cancelled", "rolled_back"]);
+    if (providerThread?.status === "active" || runs.some((run) => !settled.has(run.status))) {
+      return yield* fail("busy");
+    }
+
+    const runtime = yield* runtimes.getByThreadId({ threadId }).pipe(Effect.mapError(failed));
+    const recorded = Option.flatMap(runtime, (row) =>
+      Option.flatMap(decodeImportedTranscriptPayload(row.runtimePayload), (payload) =>
+        Option.fromUndefinedOr(
+          payload.importedTranscripts?.findLast(
+            (source) =>
+              source.providerSessionId === nativeId &&
+              source.providerInstanceId === thread.modelSelection.instanceId,
+          ),
+        ),
+      ),
+    );
+    if (Option.isNone(recorded)) return yield* fail("transcript-missing");
+    // Read before hiding anything, so a transcript that is gone leaves the thread as it was.
+    const transcript = yield* scanner.readImportedTranscript(recorded.value);
+    if (transcript._tag === "Missing") return yield* fail("transcript-missing");
+    if (transcript._tag === "Unreadable") return yield* fail("transcript-unreadable");
+
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
+    // Reloading the same transcript twice must still write new events.
+    const revision = `${transcript.source.size}-${transcript.source.mtimeMs}-reload-${now}`;
+    yield* orchestrator
+      .dispatch({
+        type: "thread.history.reload-from-native",
+        commandId: CommandId.make(`${IMPORT_EVENT_PREFIX}:reload:${threadId}:${revision}`),
+        threadId,
+      })
+      .pipe(Effect.mapError(failed));
+    // Message ids are positional, so a transcript that got shorter leaves its
+    // former tail visible; v2 has no event that removes a message. Transcripts
+    // only grow in practice, so this stays a known limitation.
+    yield* eventSink
+      .write({
+        events: transcript.thread.messages.flatMap((message, index) =>
+          messageEvents({ threadId, index, message, revision }),
+        ),
+      })
+      .pipe(Effect.mapError(failed));
+    yield* runtimes
+      .recordImportedTranscript({ threadId, source: transcript.source })
+      .pipe(Effect.mapError(failed));
+    return {
+      messageCount: transcript.thread.messages.length,
+    } satisfies AgentSessionReloadResult;
+  });
+
   return {
+    reloadImportedThread: (input: AgentSessionReloadInput) =>
+      reloadImportedThread(input).pipe(importLock.withPermits(1)),
     importRecentAgentThreads,
     importAllProjects: (options: { readonly quietPeriodMs: number }) =>
       importAllProjects(options).pipe(importLock.withPermits(1)),

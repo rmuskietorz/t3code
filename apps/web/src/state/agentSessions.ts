@@ -22,3 +22,8 @@ export const agentSessionImportAll = createEnvironmentRpcCommand(connectionAtomR
   label: "environment-data:agent-sessions:import-all",
   tag: WS_METHODS.agentSessionsImportAll,
 });
+
+export const agentSessionReloadThread = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:agent-sessions:reload-thread",
+  tag: WS_METHODS.agentSessionsReloadThread,
+});

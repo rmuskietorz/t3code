@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeOS from "node:os";
-import { describe, expect, it } from "@effect/vitest";
+import { assert, describe, expect, it } from "@effect/vitest";
 import {
   type OrchestrationProjectShell,
   ProjectId,
@@ -1467,6 +1467,69 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
           ["Fix the project", "Done"],
         ]);
       }),
+    );
+
+    it.effect(
+      "re-reads a recorded transcript for a reload, refusing a missing or foreign one",
+      () =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+          const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+          const workspace = yield* makeTempDir("t3code-workspace-");
+          const sessionId = "6f1c2a4e-1b2c-4d3e-8f90-1a2b3c4d5e6f";
+          const filePath = path.join(claudeHomePath, "projects", "-selected", `${sessionId}.jsonl`);
+          const line = (role: "user" | "assistant", text: string, session = sessionId) =>
+            JSON.stringify({
+              type: role,
+              cwd: workspace,
+              sessionId: session,
+              timestamp: "2026-08-23T12:00:00.000Z",
+              message: { role, content: role === "user" ? text : [{ type: "text", text }] },
+            });
+          yield* writeTranscript({
+            filePath,
+            contents: [line("user", "Fix it"), line("assistant", "Done"), line("user", "And more")]
+              .map((record) => `${record}\n`)
+              .join(""),
+            mtimeMs: Date.parse("2026-08-23T12:00:00.000Z"),
+          });
+          const recorded = {
+            provider: "claudeAgent" as const,
+            providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+            providerSessionId: sessionId,
+            filePath,
+            size: 1,
+            mtimeMs: 1,
+            device: 1,
+            inode: 1,
+            birthtimeMs: 1,
+          };
+          const read = (source: typeof recorded) =>
+            Effect.gen(function* () {
+              const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+              return yield* scanner.readImportedTranscript(source);
+            }).pipe(Effect.provide(layerScannerTest({ claudeHomePath, codexHomePath })));
+
+          const current = yield* read(recorded);
+          assert(current._tag === "Read");
+          expect(current.thread.messages.map((message) => message.text)).toEqual([
+            "Fix it",
+            "Done",
+            "And more",
+          ]);
+          // The fingerprint describes the file as it is now, not as it was recorded.
+          expect(current.source.size).toBe(Number((yield* fileSystem.stat(filePath)).size));
+          expect(
+            (yield* read({
+              ...recorded,
+              providerSessionId: "00000000-0000-4000-8000-000000000000",
+            }))._tag,
+          ).toBe("Unreadable");
+          yield* fileSystem.remove(filePath);
+          expect((yield* read(recorded))._tag).toBe("Missing");
+        }),
     );
 
     it.effect("imports history recorded with a case alias", () =>

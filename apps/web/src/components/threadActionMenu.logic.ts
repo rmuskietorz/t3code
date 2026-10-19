@@ -1,4 +1,4 @@
-import type { ContextMenuItem } from "@t3tools/contracts";
+import type { ContextMenuItem, ThreadId } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
 export type ThreadActionMenuId =
@@ -25,6 +25,7 @@ export type ThreadActionMenuId =
   | "copy-path"
   | "copy-branch"
   | "copy-thread-id"
+  | "reload-from-session"
   | "archive"
   | "delete";
 
@@ -66,6 +67,11 @@ export function buildDraftActionMenuItems(options: {
   ];
 }
 
+/** The agent session importer names its threads `import:<instance>:<session>`. */
+export function isAgentSessionImportThread(threadId: ThreadId): boolean {
+  return threadId.startsWith("import:");
+}
+
 export interface ThreadActionMenuState {
   readonly canOperate: boolean;
   readonly branch: string | null;
@@ -88,6 +94,8 @@ export interface ThreadActionMenuState {
   readonly isRegeneratingTitle: boolean;
   /** Archive rejects a thread with an attached provider, so disable it here rather than let the action fail. */
   readonly isRunning: boolean;
+  /** An agent session import on a server that can rebuild it from the transcript. */
+  readonly canReloadFromSession: boolean;
   readonly supports: {
     readonly settlement: boolean;
     readonly autoSettleOptOut: boolean;
@@ -234,6 +242,16 @@ export function buildThreadActionMenuItems(
       ],
     },
     { id: "project-settings", label: "Project settings", icon: "settings" },
+    ...(state.canReloadFromSession
+      ? [
+          {
+            id: "reload-from-session" as const,
+            label: "Reload from session",
+            icon: "refresh-cw",
+            disabled: state.isRunning,
+          },
+        ]
+      : []),
     {
       id: "archive",
       label: "Archive thread",

@@ -4,7 +4,11 @@ import {
   scopeThreadRef,
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
-import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import {
+  isAtomCommandInterrupted,
+  settlePromise,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import {
@@ -24,6 +28,8 @@ import { useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef } from "react";
 
 import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
+import { isAgentSessionImportThread } from "../components/threadActionMenu.logic";
+import { agentSessionReloadThread } from "../state/agentSessions";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentSession, readEnvironmentScope } from "../state/session";
 import { terminalEnvironment } from "../state/terminal";
@@ -37,6 +43,7 @@ import { refreshArchivedThreadsForEnvironment } from "../lib/archivedThreadsStat
 import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
 import { readLocalApi } from "../localApi";
 import {
+  readEnvironmentSupportsAgentSessionReload,
   readEnvironmentSupportsAutoSettleOptOut,
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsPinReorder,
@@ -291,6 +298,7 @@ export function useThreadActions() {
     reportFailure: false,
   });
   const markThreadUnread = useMarkThreadUnread();
+  const reloadThreadMutation = useAtomCommand(agentSessionReloadThread, { reportFailure: false });
   const stopThreadSession = useOrchestrationCommand(threadEnvironment.stopSession);
   const removeWorktree = useAtomCommand(vcsEnvironment.removeWorktree, {
     reportFailure: false,
@@ -974,6 +982,41 @@ export function useThreadActions() {
     [confirmThreadDelete, deleteThread, resolveThreadTarget],
   );
 
+  const reloadThreadFromSession = useCallback(
+    async (target: ScopedThreadRef) => {
+      const api = readLocalApi();
+      if (!api) return;
+      const confirmed = await settlePromise(() =>
+        api.dialogs.confirm(
+          [
+            "Replace this thread's history with the Claude Code session?",
+            "Messages are re-read from the session transcript.",
+          ].join("\n"),
+        ),
+      );
+      if (confirmed._tag === "Failure" || !confirmed.value) return;
+      const result = await reloadThreadMutation({
+        environmentId: target.environmentId,
+        input: { threadId: target.threadId },
+      });
+      if (result._tag === "Success") {
+        toastManager.add(
+          stackedThreadToast({ type: "success", title: "Thread reloaded from session" }),
+        );
+      } else if (!isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not reload from session",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      }
+    },
+    [reloadThreadMutation],
+  );
+
   return useMemo(
     () => ({
       archiveThread,
@@ -991,8 +1034,10 @@ export function useThreadActions() {
       reorderActiveThread,
       markThreadUnread,
       setThreadAutoSettle,
+      reloadThreadFromSession,
     }),
     [
+      reloadThreadFromSession,
       archiveThread,
       confirmAndDeleteThread,
       confirmAndUnpinThread,
@@ -1009,5 +1054,14 @@ export function useThreadActions() {
       unsettleThread,
       unsnoozeThread,
     ],
+  );
+}
+
+/** Whether a thread can be rebuilt from the Claude Code or Codex session it was imported from. */
+export function readCanReloadThreadFromSession(target: ScopedThreadRef): boolean {
+  return (
+    isAgentSessionImportThread(target.threadId) &&
+    readEnvironmentSupportsAgentSessionReload(target.environmentId) &&
+    appAtomRegistry.get(agentSessionReloadThread.permissionAtom(target.environmentId))
   );
 }

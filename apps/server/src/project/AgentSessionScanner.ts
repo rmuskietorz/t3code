@@ -148,6 +148,15 @@ export type AgentSessionRecentThread =
   | { readonly _tag: "Duplicate"; readonly source: AgentSessionImportSource }
   | { readonly _tag: "Skipped" };
 
+export type AgentSessionTranscriptRead =
+  | {
+      readonly _tag: "Read";
+      readonly thread: AgentSessionThread;
+      readonly source: AgentSessionImportSource;
+    }
+  | { readonly _tag: "Missing" }
+  | { readonly _tag: "Unreadable" };
+
 export class AgentSessionScanner extends Context.Service<
   AgentSessionScanner,
   {
@@ -164,6 +173,10 @@ export class AgentSessionScanner extends Context.Service<
     ) => Stream.Stream<AgentSessionRecentThread, AgentSessionScanError>;
     /** Rediscovers transcripts so later `recentThreads` calls see files created since the last scan. */
     readonly refreshCandidates: Effect.Effect<void, AgentSessionScanError>;
+    /** Reads the current contents of a transcript a thread was imported from. */
+    readonly readImportedTranscript: (
+      source: AgentSessionImportSource,
+    ) => Effect.Effect<AgentSessionTranscriptRead>;
   }
 >()("t3/project/AgentSessionScanner") {}
 
@@ -1450,7 +1463,53 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  return AgentSessionScanner.of({ scan, recentThreads, refreshCandidates });
+  const readImportedTranscript: AgentSessionScanner["Service"]["readImportedTranscript"] = (
+    recorded,
+  ) =>
+    Effect.gen(function* () {
+      const stats = yield* statOption(recorded.filePath);
+      if (Option.isNone(stats) || stats.value.type !== "File") {
+        return { _tag: "Missing" } as const;
+      }
+      const identity = transcriptIdentity(recorded.filePath, stats.value);
+      const snapshot = yield* readTranscript(
+        recorded.filePath,
+        identity,
+        MAX_IMPORT_RECORDS,
+        recorded.provider,
+      );
+      if (snapshot === null) return { _tag: "Unreadable" } as const;
+      const thread = parseAgentSessionRecords(
+        {
+          source: recorded.provider,
+          providerInstanceId: recorded.providerInstanceId,
+          fallbackSessionId: path.basename(recorded.filePath, ".jsonl"),
+          lastActiveAtMs: identity.mtimeMs ?? DateTime.toEpochMillis(yield* DateTime.now),
+        },
+        snapshot.records,
+      );
+      // A path that now holds another session is not this thread's transcript.
+      if (thread === null || thread.providerSessionId !== recorded.providerSessionId) {
+        return { _tag: "Unreadable" } as const;
+      }
+      return {
+        _tag: "Read",
+        thread,
+        source: {
+          ...identity,
+          provider: thread.source,
+          providerInstanceId: thread.providerInstanceId,
+          providerSessionId: thread.providerSessionId,
+        },
+      } as const;
+    }).pipe(importReadLock.withPermits(1));
+
+  return AgentSessionScanner.of({
+    scan,
+    recentThreads,
+    refreshCandidates,
+    readImportedTranscript,
+  });
 });
 
 export const layer = Layer.effect(AgentSessionScanner, make);

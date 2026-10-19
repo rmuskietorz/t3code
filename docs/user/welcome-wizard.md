@@ -69,10 +69,17 @@ so raise that too if you want a longer window.
 
 While T3 Code is open, it checks existing projects for new Claude and Codex
 sessions every 10 minutes. A session still in use waits until it has been idle
-for 10 minutes. Messages added to a session after it was imported are not
-brought over. Change the interval, or set it to 0 to turn it off, in the same
-settings section. "Import now" there, or "Import new agent sessions now" in the
-command palette, checks right away.
+for 10 minutes. Messages added to a session after it was imported are brought
+over until you continue the thread in T3 Code. Change the interval, or set it to
+0 to turn it off, in the same settings section. "Import now" there, or "Import
+new agent sessions now" in the command palette, checks right away.
+
+To make an imported thread match its session again, choose "Reload from
+session" in the thread's menu or "Reload thread from session" in the command
+palette. T3 Code replaces the thread's history with the messages in the Claude
+Code or Codex transcript, including turns you ran in T3 Code, and your next
+message continues the same session. Your files are not changed. Stop running
+work first, and the transcript must still exist.
 
 Conversation import is best effort. T3 Code keeps the first user prompt and the
 newest remaining visible user and assistant messages, with 200 messages total.

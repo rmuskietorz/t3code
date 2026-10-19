@@ -3022,6 +3022,15 @@ const OrchestrationV2InternalCommand = Schema.Union([
     reason: Schema.optional(Schema.String),
   }),
   /**
+   * Internal so only the agent session importer, which rewrites the history
+   * from the transcript right after, can hide a thread's T3 runs.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.history.reload-from-native"),
+    commandId: CommandId,
+    threadId: ThreadId,
+  }),
+  /**
    * Internal so no client can mark a request saved without the value being
    * stored.
    */

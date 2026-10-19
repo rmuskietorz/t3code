@@ -472,6 +472,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.user-input.dismiss":
     case "checkpoint.rollback":
     case "checkpoint.rollback.fail":
+    case "thread.history.reload-from-native":
     case "thread.background-work.settle":
     case "thread.stop":
     case "provider.switch":
@@ -9747,6 +9748,136 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
 
   /**
+   * Hides every T3 run of an agent session import so the importer can show the
+   * native transcript instead. Unlike a checkpoint rollback it never touches the
+   * provider conversation or the workspace: the native session already holds
+   * those turns, and the next turn resumes it as is.
+   */
+  const dispatchThreadHistoryReloadFromNative = (
+    command: Extract<
+      OrchestrationV2InternalCommand,
+      { readonly type: "thread.history.reload-from-native" }
+    >,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+  ) =>
+    Effect.gen(function* () {
+      const projection = yield* projectionStore
+        .getThreadRecords(command.threadId, ["runs", "nodes", "providerThreads", "checkpoints"])
+        .pipe(
+          Effect.mapError(
+            (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
+          ),
+        );
+      const { thread } = projection;
+      const providerThread = projection.providerThreads.find(
+        (candidate) => candidate.id === thread.activeProviderThreadId,
+      );
+      if (
+        thread.deletedAt !== null ||
+        providerThread === undefined ||
+        !importedNativeHistoryResumes({
+          historyOrigin: thread.historyOrigin,
+          providerThread,
+          providerInstanceId: thread.modelSelection.instanceId,
+        })
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: `Thread ${command.threadId} does not continue an agent session.`,
+        });
+      }
+      if (
+        providerThread.status === "active" ||
+        projection.runs.some(
+          (run) =>
+            run.status !== "completed" &&
+            run.status !== "interrupted" &&
+            run.status !== "failed" &&
+            run.status !== "cancelled" &&
+            run.status !== "rolled_back",
+        )
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: `Thread ${command.threadId} has work in progress.`,
+        });
+      }
+
+      const now = yield* DateTime.now;
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "provider-thread.updated",
+        threadId: command.threadId,
+        driver: providerThread.driver,
+        providerInstanceId: providerThread.providerInstanceId,
+        occurredAt: now,
+        payload: {
+          ...providerThread,
+          nativeConversationHeadRef: null,
+          lastRunOrdinal: null,
+          updatedAt: now,
+        },
+      });
+      const runsToHide = projection.runs.filter((run) => run.status !== "rolled_back");
+      const hiddenRunIds = new Set(runsToHide.map((run) => run.id));
+      // Restoring a hidden run's checkpoint would revive history the transcript replaced.
+      for (const checkpoint of projection.checkpoints) {
+        if (
+          checkpoint.status !== "ready" ||
+          checkpoint.runId === null ||
+          !hiddenRunIds.has(checkpoint.runId)
+        ) {
+          continue;
+        }
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "checkpoint.captured",
+          threadId: command.threadId,
+          runId: checkpoint.runId,
+          nodeId: checkpoint.nodeId,
+          providerInstanceId: providerThread.providerInstanceId,
+          occurredAt: now,
+          payload: { ...checkpoint, status: "stale" },
+        });
+      }
+      for (const run of runsToHide) {
+        const rootNode = projection.nodes.find((candidate) => candidate.id === run.rootNodeId);
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "run.updated",
+          threadId: command.threadId,
+          runId: run.id,
+          ...(rootNode === undefined ? {} : { nodeId: rootNode.id }),
+          providerInstanceId: run.providerInstanceId,
+          occurredAt: now,
+          payload: { ...run, status: "rolled_back", completedAt: now },
+        });
+        if (rootNode !== undefined) {
+          yield* emit(
+            events,
+            command,
+          )({
+            type: "node.updated",
+            threadId: command.threadId,
+            runId: run.id,
+            nodeId: rootNode.id,
+            providerInstanceId: run.providerInstanceId,
+            occurredAt: now,
+            payload: { ...rootNode, status: "rolled_back", completedAt: now },
+          });
+        }
+      }
+    });
+
+  /**
    * Thread lineage and fork origin are immutable, so this
    * is safe to read without holding either thread's dispatch lock.
    */
@@ -10895,6 +11026,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         break;
       case "checkpoint.rollback.fail":
         yield* dispatchCheckpointRollbackFail(command, events);
+        break;
+      case "thread.history.reload-from-native":
+        yield* dispatchThreadHistoryReloadFromNative(command, events);
         break;
       case "thread.background-work.settle":
         yield* dispatchBackgroundWorkSettle(command, events, effects);

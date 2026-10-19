@@ -240,6 +240,13 @@ export function readEnvironmentSupportsTitleRegeneration(environmentId: Environm
   );
 }
 
+export function readEnvironmentSupportsAgentSessionReload(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .agentSessionReloadThread === true
+  );
+}
+
 export function readEnvironmentSupportsPinning(environmentId: EnvironmentId): boolean {
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
