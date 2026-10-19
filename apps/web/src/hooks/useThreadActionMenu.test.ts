@@ -122,8 +122,9 @@ vi.mock("./useSettings", () => ({
     }),
 }));
 vi.mock("./useThreadActions", () => ({
-  useThreadActions: () =>
-    Object.fromEntries(
+  readCanReloadThreadFromSession: () => false,
+  useThreadActions: () => ({
+    ...Object.fromEntries(
       [
         "markThreadUnread",
         "settleThread",
@@ -142,6 +143,7 @@ vi.mock("./useThreadActions", () => ({
         },
       ]),
     ),
+  }),
 }));
 
 import { useThreadActionMenu } from "./useThreadActionMenu";
