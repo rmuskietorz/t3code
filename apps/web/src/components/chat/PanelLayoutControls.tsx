@@ -7,6 +7,7 @@ import type { ThreadPanelPresentation } from "../../rightPanelLayout";
 import { PopoverCreateHandle, PopoverTrigger } from "../ui/popover";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SplitPaneControls } from "./SplitPaneControls";
 
 export interface PanelLayoutControlsProps {
   showThreadPanelControl?: boolean;
@@ -127,6 +128,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
           </TooltipPopup>
         </Tooltip>
       ) : null}
+      {showRightPanelControl ? <SplitPaneControls /> : null}
     </div>
   );
 });

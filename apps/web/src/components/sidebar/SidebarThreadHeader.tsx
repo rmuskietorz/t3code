@@ -1,11 +1,4 @@
-import {
-  Columns2Icon,
-  FolderPlusIcon,
-  MinusIcon,
-  SearchIcon,
-  SquarePenIcon,
-  XIcon,
-} from "lucide-react";
+import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -18,12 +11,6 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { readSplitViewHost, useSplitViewActive } from "../../splitViewHost";
-import {
-  CLOSE_SPLIT_PANE_LABEL,
-  MINIMIZE_SPLIT_PANE_LABEL,
-  OPEN_SPLIT_VIEW_LABEL,
-} from "./SplitViewButton";
 
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
@@ -67,8 +54,6 @@ export function SidebarThreadHeader({
   activeSearchResultIndex,
   onClearSearch,
 }: SidebarThreadHeaderProps) {
-  const splitViewHost = readSplitViewHost();
-  const splitViewActive = useSplitViewActive();
   const resultsVisible = isSearching && searchResultCount > 0;
   // Results shrink as the query narrows, so the active index can outrun the
   // list; pointing aria-activedescendant at a removed option strands the
@@ -122,29 +107,6 @@ export function SidebarThreadHeader({
         ) : null}
       </div>
       <div className="flex shrink-0 items-center">
-        {splitViewHost && splitViewActive ? (
-          <>
-            <SidebarHeaderIconButton
-              label={MINIMIZE_SPLIT_PANE_LABEL}
-              onClick={() => splitViewHost.minimizeThisPane()}
-            >
-              <MinusIcon />
-            </SidebarHeaderIconButton>
-            <SidebarHeaderIconButton
-              label={CLOSE_SPLIT_PANE_LABEL}
-              onClick={() => splitViewHost.closeThisPane()}
-            >
-              <XIcon />
-            </SidebarHeaderIconButton>
-          </>
-        ) : splitViewHost ? (
-          <SidebarHeaderIconButton
-            label={OPEN_SPLIT_VIEW_LABEL}
-            onClick={() => splitViewHost.toggle()}
-          >
-            <Columns2Icon />
-          </SidebarHeaderIconButton>
-        ) : null}
         {expansionMenu}
         {hasProjects ? (
           <>

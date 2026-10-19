@@ -174,7 +174,6 @@ import {
   customProjectGroupDragId,
 } from "./sidebar/CustomProjectGroupHeader";
 import { SidebarExpansionMenu, sidebarExpansionMenuGroups } from "./sidebar/SidebarExpansionMenu";
-import { SplitViewButton } from "./sidebar/SplitViewButton";
 import {
   partitionIntoCustomProjectGroups,
   UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
@@ -3265,7 +3264,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               })}
               onAction={handleBulkExpansion}
             />
-            <SplitViewButton />
             <Tooltip>
               <TooltipTrigger
                 render={
