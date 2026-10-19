@@ -13,6 +13,8 @@ export interface SplitViewHost {
   readonly openInOtherPane: (path: string) => void;
   /** Closes the pane this app runs in; the other pane takes the whole window. */
   readonly closeThisPane: () => void;
+  /** Parks the pane this app runs in as a tab the shell can restore later. */
+  readonly minimizeThisPane: () => void;
   readonly isSplit: () => boolean;
   readonly subscribe: (onChange: () => void) => () => void;
 }

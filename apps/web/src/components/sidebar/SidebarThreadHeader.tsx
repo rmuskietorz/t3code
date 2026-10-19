@@ -1,4 +1,11 @@
-import { Columns2Icon, FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import {
+  Columns2Icon,
+  FolderPlusIcon,
+  MinusIcon,
+  SearchIcon,
+  SquarePenIcon,
+  XIcon,
+} from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -12,7 +19,11 @@ import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readSplitViewHost, useSplitViewActive } from "../../splitViewHost";
-import { CLOSE_SPLIT_PANE_LABEL, OPEN_SPLIT_VIEW_LABEL } from "./SplitViewButton";
+import {
+  CLOSE_SPLIT_PANE_LABEL,
+  MINIMIZE_SPLIT_PANE_LABEL,
+  OPEN_SPLIT_VIEW_LABEL,
+} from "./SplitViewButton";
 
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
@@ -111,14 +122,27 @@ export function SidebarThreadHeader({
         ) : null}
       </div>
       <div className="flex shrink-0 items-center">
-        {splitViewHost ? (
+        {splitViewHost && splitViewActive ? (
+          <>
+            <SidebarHeaderIconButton
+              label={MINIMIZE_SPLIT_PANE_LABEL}
+              onClick={() => splitViewHost.minimizeThisPane()}
+            >
+              <MinusIcon />
+            </SidebarHeaderIconButton>
+            <SidebarHeaderIconButton
+              label={CLOSE_SPLIT_PANE_LABEL}
+              onClick={() => splitViewHost.closeThisPane()}
+            >
+              <XIcon />
+            </SidebarHeaderIconButton>
+          </>
+        ) : splitViewHost ? (
           <SidebarHeaderIconButton
-            label={splitViewActive ? CLOSE_SPLIT_PANE_LABEL : OPEN_SPLIT_VIEW_LABEL}
-            onClick={() =>
-              splitViewActive ? splitViewHost.closeThisPane() : splitViewHost.toggle()
-            }
+            label={OPEN_SPLIT_VIEW_LABEL}
+            onClick={() => splitViewHost.toggle()}
           >
-            {splitViewActive ? <XIcon /> : <Columns2Icon />}
+            <Columns2Icon />
           </SidebarHeaderIconButton>
         ) : null}
         {expansionMenu}

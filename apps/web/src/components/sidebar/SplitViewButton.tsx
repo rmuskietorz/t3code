@@ -1,18 +1,18 @@
-import { Columns2Icon, XIcon } from "lucide-react";
+import { Columns2Icon, MinusIcon, XIcon } from "lucide-react";
 
 import { readSplitViewHost, useSplitViewActive } from "../../splitViewHost";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export const OPEN_SPLIT_VIEW_LABEL = "Open split view (Ctrl+Alt+S)";
+export const MINIMIZE_SPLIT_PANE_LABEL = "Minimize this half to the tab bar";
 export const CLOSE_SPLIT_PANE_LABEL = "Close this half of the split view";
 
-/** The legacy sidebar's split view control, shown only inside a shell that provides it. */
-export function SplitViewButton() {
-  const host = readSplitViewHost();
-  const split = useSplitViewActive();
-  if (host === null) return null;
-  const label = split ? CLOSE_SPLIT_PANE_LABEL : OPEN_SPLIT_VIEW_LABEL;
+function LegacyIconButton(props: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -20,14 +20,38 @@ export function SplitViewButton() {
           <Button
             size="icon-xs"
             variant="ghost-muted"
-            aria-label={label}
-            onClick={() => (split ? host.closeThisPane() : host.toggle())}
+            aria-label={props.label}
+            onClick={props.onClick}
           />
         }
       >
-        {split ? <XIcon className="size-3.5" /> : <Columns2Icon className="size-3.5" />}
+        {props.children}
       </TooltipTrigger>
-      <TooltipPopup side="right">{label}</TooltipPopup>
+      <TooltipPopup side="right">{props.label}</TooltipPopup>
     </Tooltip>
+  );
+}
+
+/** The legacy sidebar's split view controls, shown only inside a shell that provides them. */
+export function SplitViewButton() {
+  const host = readSplitViewHost();
+  const split = useSplitViewActive();
+  if (host === null) return null;
+  if (!split) {
+    return (
+      <LegacyIconButton label={OPEN_SPLIT_VIEW_LABEL} onClick={() => host.toggle()}>
+        <Columns2Icon className="size-3.5" />
+      </LegacyIconButton>
+    );
+  }
+  return (
+    <>
+      <LegacyIconButton label={MINIMIZE_SPLIT_PANE_LABEL} onClick={() => host.minimizeThisPane()}>
+        <MinusIcon className="size-3.5" />
+      </LegacyIconButton>
+      <LegacyIconButton label={CLOSE_SPLIT_PANE_LABEL} onClick={() => host.closeThisPane()}>
+        <XIcon className="size-3.5" />
+      </LegacyIconButton>
+    </>
   );
 }
