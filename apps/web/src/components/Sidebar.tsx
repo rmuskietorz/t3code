@@ -158,6 +158,7 @@ import {
 import {
   buildCustomGroupScopeSections,
   buildSidebarProjectScopeItems,
+  customGroupScopeKey,
   filterGroupedSidebarProjectScopeItems,
   resolveCustomGroupScope,
 } from "../sidebarCustomGroupScope";
@@ -301,6 +302,8 @@ import {
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
+import { SidebarProfileMenu } from "./sidebar/SidebarProfileMenu";
+import { filterToSidebarProfile, useSidebarProfile } from "../sidebarProfile";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -2448,7 +2451,30 @@ export default function Sidebar() {
       }),
     [customGroupSections, customGroupSettings, persistedProjectScopeKey],
   );
-  const projectScopeKey = useMemo(
+  const { profile: sidebarProfile } = useSidebarProfile();
+  const profileProjectGroups = useMemo(
+    () =>
+      filterToSidebarProfile(
+        projectGroups,
+        (project) => project.memberProjects,
+        sidebarProfile,
+        customGroupSettings,
+      ),
+    [customGroupSettings, projectGroups, sidebarProfile],
+  );
+  const projectScopeItems = useMemo(
+    () =>
+      buildSidebarProjectScopeItems(
+        profileProjectGroups,
+        sidebarProfile === null
+          ? customGroupSections
+          : (customGroupSections?.filter(
+              (section) => section.value === customGroupScopeKey(sidebarProfile.key),
+            ) ?? null),
+      ),
+    [customGroupSections, profileProjectGroups, sidebarProfile],
+  );
+  const sharedProjectScopeKey = useMemo(
     () =>
       customGroupScope.kind === "group"
         ? persistedProjectScopeKey
@@ -2461,10 +2487,16 @@ export default function Sidebar() {
             }),
     [customGroupScope, persistedProjectScopeKey, projectGroups, projectGroupingSettings],
   );
-  const projectScopeItems = useMemo(
-    () => buildSidebarProjectScopeItems(projectGroups, customGroupSections),
-    [customGroupSections, projectGroups],
-  );
+  // The scope is stored for every window while the profile belongs to this one,
+  // so a scope outside the profile is ignored here instead of cleared everywhere.
+  const projectScopeKey =
+    sidebarProfile === null ||
+    sharedProjectScopeKey === null ||
+    projectScopeItems.some((item) => item.value === sharedProjectScopeKey)
+      ? sharedProjectScopeKey
+      : null;
+  const activeGroupScope =
+    projectScopeKey !== null && customGroupScope.kind === "group" ? customGroupScope.section : null;
   const showProjectEnvironments = useMemo(
     () => projectGroupsSpanEnvironments(projectGroups),
     [projectGroups],
@@ -2515,12 +2547,13 @@ export default function Sidebar() {
     [projectGroups, projectScopeKey],
   );
   const scopedProjectKeys = useMemo(() => {
-    const scopedProjects =
-      customGroupScope.kind === "group"
-        ? customGroupScope.section.projects
-        : scopedProjectGroup === null
-          ? null
-          : [scopedProjectGroup];
+    const scopedProjects = activeGroupScope
+      ? activeGroupScope.projects
+      : scopedProjectGroup
+        ? [scopedProjectGroup]
+        : sidebarProfile
+          ? profileProjectGroups
+          : null;
     return scopedProjects === null
       ? null
       : new Set(
@@ -2530,7 +2563,7 @@ export default function Sidebar() {
             ),
           ),
         );
-  }, [customGroupScope, scopedProjectGroup]);
+  }, [activeGroupScope, profileProjectGroups, scopedProjectGroup, sidebarProfile]);
   const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
   const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
   useEffect(() => {
@@ -4820,8 +4853,8 @@ export default function Sidebar() {
                     render={
                       <SidebarHeaderIconButton
                         label={
-                          customGroupScope.kind === "group"
-                            ? `Filter threads by group: ${customGroupScope.section.label}`
+                          activeGroupScope
+                            ? `Filter threads by group: ${activeGroupScope.label}`
                             : scopedProjectGroup
                               ? `Filter threads by project: ${scopedProjectGroup.displayName}`
                               : "Filter threads by project"
@@ -4829,7 +4862,7 @@ export default function Sidebar() {
                       />
                     }
                   >
-                    {customGroupScope.kind === "group" ? (
+                    {activeGroupScope ? (
                       <FolderIcon className="size-4" />
                     ) : scopedProjectGroup ? (
                       <span className="flex shrink-0">
@@ -4934,6 +4967,7 @@ export default function Sidebar() {
                   </ComboboxPopup>
                 </Combobox>
               }
+              profileSwitcher={<SidebarProfileMenu className="self-start" />}
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
               newThreadDisabled={projects.length === 0}

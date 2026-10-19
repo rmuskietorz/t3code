@@ -143,6 +143,11 @@ rules. Projects that belong nowhere count as **Ungrouped**. Each device keeps it
 - **Legacy sidebar:** projects appear under collapsible group headings. While projects are sorted
   manually, drag a project onto a group to move it, and drag a heading to reorder groups.
 
+With groups on, the profile menu at the top of the sidebar narrows the sidebar, thread search, and
+the command palette's project and thread lists to one group or to **Ungrouped**; **All projects**
+shows everything again. Each window or split pane keeps its own profile, and a new window starts
+with the one you chose last. The command palette offers the same choice as **Switch profile**.
+
 The **Collapse or expand all** button collapses or expands the Working, Snoozed, and Settled
 sections. In the legacy sidebar it collapses or expands every project, shows every thread or only
 the preview, and folds all groups at once. The same actions are in the command palette.

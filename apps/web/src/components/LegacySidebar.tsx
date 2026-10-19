@@ -173,6 +173,8 @@ import {
   CustomProjectGroupHeader,
   customProjectGroupDragId,
 } from "./sidebar/CustomProjectGroupHeader";
+import { SidebarProfileMenu } from "./sidebar/SidebarProfileMenu";
+import { useSidebarProfile } from "~/sidebarProfile";
 import { SidebarExpansionMenu, sidebarExpansionMenuGroups } from "./sidebar/SidebarExpansionMenu";
 import {
   partitionIntoCustomProjectGroups,
@@ -3247,7 +3249,11 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       <LocalSecondaryStatus />
       <SidebarGroup>
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-xs font-medium text-sidebar-muted-foreground/80">Projects</span>
+          {projectSections === null ? (
+            <span className="text-xs font-medium text-sidebar-muted-foreground/80">Projects</span>
+          ) : (
+            <SidebarProfileMenu className="-ml-2 min-w-0" />
+          )}
           <div className="flex items-center gap-1">
             <ProjectSortMenu
               projectSortOrder={projectSortOrder}
@@ -3319,6 +3325,7 @@ export default function LegacySidebar() {
     (settings) => settings.sidebarCustomProjectGroupAssignments,
   );
   const customProjectGroupActions = useCustomProjectGroupActions();
+  const { profile: sidebarProfile } = useSidebarProfile();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
   const navigate = useNavigate();
@@ -3607,21 +3614,29 @@ export default function LegacySidebar() {
     visibleThreads,
   ]);
   const isManualProjectSorting = sidebarProjectSortOrder === "manual";
-  const projectSections = useMemo(
-    () =>
-      customProjectGroupsEnabled
-        ? partitionIntoCustomProjectGroups(sortedProjects, (project) => project.memberProjects, {
-            sidebarCustomProjectGroups: customProjectGroups,
-            sidebarCustomProjectGroupAssignments: customProjectGroupAssignments,
-          })
-        : null,
-    [
-      customProjectGroupAssignments,
-      customProjectGroups,
-      customProjectGroupsEnabled,
+  const projectSections = useMemo(() => {
+    if (!customProjectGroupsEnabled) return null;
+    const sections = partitionIntoCustomProjectGroups(
       sortedProjects,
-    ],
-  );
+      (project) => project.memberProjects,
+      {
+        sidebarCustomProjectGroups: customProjectGroups,
+        sidebarCustomProjectGroupAssignments: customProjectGroupAssignments,
+      },
+    );
+    return sidebarProfile === null
+      ? sections
+      : sections.filter(
+          (section) =>
+            (section.group?.id ?? UNGROUPED_CUSTOM_PROJECT_GROUP_ID) === sidebarProfile.key,
+        );
+  }, [
+    customProjectGroupAssignments,
+    customProjectGroups,
+    customProjectGroupsEnabled,
+    sidebarProfile,
+    sortedProjects,
+  ]);
   const projectSectionKeys = useMemo(
     () =>
       projectSections?.map((section) => section.group?.id ?? UNGROUPED_CUSTOM_PROJECT_GROUP_ID) ??

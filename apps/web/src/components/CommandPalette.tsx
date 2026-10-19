@@ -70,6 +70,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   HistoryIcon,
+  LayersIcon,
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -250,6 +251,11 @@ import {
   buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
 } from "../sidebarProjectGrouping";
+import {
+  ALL_SIDEBAR_PROFILE_KEY,
+  filterToSidebarProfile,
+  useSidebarProfile,
+} from "../sidebarProfile";
 import type { Project } from "../types";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { readPullRequestListPreferences } from "~/components/pullRequest/pullRequestListPreferences";
@@ -859,15 +865,45 @@ function OpenCommandPaletteDialog(props: {
       projects,
     ],
   );
+  const sidebarProfile = useSidebarProfile();
   const projectGroups = useMemo(
     () =>
-      sortLogicalProjectsForSidebar(
-        unsortedProjectGroups,
-        threads,
-        clientSettings.sidebarProjectSortOrder,
+      filterToSidebarProfile(
+        sortLogicalProjectsForSidebar(
+          unsortedProjectGroups,
+          threads,
+          clientSettings.sidebarProjectSortOrder,
+        ),
+        (project) => project.memberProjects,
+        sidebarProfile.profile,
+        {
+          sidebarCustomProjectGroups: clientSettings.sidebarCustomProjectGroups,
+          sidebarCustomProjectGroupAssignments: clientSettings.sidebarCustomProjectGroupAssignments,
+        },
       ),
-    [clientSettings.sidebarProjectSortOrder, threads, unsortedProjectGroups],
+    [
+      clientSettings.sidebarCustomProjectGroupAssignments,
+      clientSettings.sidebarCustomProjectGroups,
+      clientSettings.sidebarProjectSortOrder,
+      sidebarProfile.profile,
+      threads,
+      unsortedProjectGroups,
+    ],
   );
+  // Thread search follows the profile like the sidebar lists do.
+  const profileThreads = useMemo(() => {
+    if (sidebarProfile.profile === null) return threads;
+    const projectKeys = new Set(
+      projectGroups.flatMap((project) =>
+        project.memberProjectRefs.map(
+          (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
+        ),
+      ),
+    );
+    return threads.filter((thread) =>
+      projectKeys.has(`${thread.environmentId}:${thread.projectId}`),
+    );
+  }, [projectGroups, sidebarProfile.profile, threads]);
   const contextualProjectRef = useMemo(
     () =>
       resolveThreadActionProjectRef({
@@ -1313,7 +1349,7 @@ function OpenCommandPaletteDialog(props: {
   const allThreadItems = useMemo(
     () =>
       buildThreadActionItems({
-        threads,
+        threads: profileThreads,
         ...(activeThreadId ? { activeThreadId } : {}),
         projectTitleById,
         sortOrder: clientSettings.sidebarThreadSortOrder,
@@ -1389,7 +1425,7 @@ function OpenCommandPaletteDialog(props: {
       threadContentMatchByKey,
       threadSearch.query,
       threadSearchQuery,
-      threads,
+      profileThreads,
     ],
   );
   const recentThreadItems = allThreadItems.slice(0, RECENT_THREAD_LIMIT);
@@ -2035,6 +2071,20 @@ function OpenCommandPaletteDialog(props: {
       ),
       run: async () => {
         requestSidebarBulkExpansion(entry.action);
+      },
+    });
+  }
+
+  for (const option of sidebarProfile.options ?? []) {
+    if (option.key === (sidebarProfile.profile?.key ?? ALL_SIDEBAR_PROFILE_KEY)) continue;
+    actionItems.push({
+      kind: "action",
+      value: `action:sidebar-profile:${option.key}`,
+      searchTerms: ["profile", "switch", "group", option.label],
+      title: `Switch profile: ${option.label}`,
+      icon: <LayersIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        sidebarProfile.setProfileKey(option.key);
       },
     });
   }
