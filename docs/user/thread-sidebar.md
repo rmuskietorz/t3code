@@ -150,6 +150,17 @@ the command palette's project and thread lists to one group or to **Ungrouped**;
 shows everything again. Each window or split pane keeps its own profile, and a new window starts
 with the one you chose last. The command palette offers the same choice as **Switch profile**.
 
+### Archive projects
+
+To hide a project you are not working on, choose **Archive project** in its menu: right-click the
+project in the legacy sidebar or in the sidebar's project filter, or run **Archive project** from
+the command palette while one of its threads is open. The project and its threads leave the
+sidebar, its groups, and the project pickers. Nothing is deleted and the server is not changed, so
+links to its threads keep working. Archiving is saved per device, like custom groups.
+
+**Settings → Archived** lists archived projects with the date you archived them; **Unarchive**
+brings one back. A project whose environment is not connected shows its key there instead.
+
 The **Collapse or expand all** button collapses or expands the Working, Snoozed, and Settled
 sections. In the legacy sidebar it collapses or expands every project, shows every thread or only
 the preview, and folds all groups at once. The same actions are in the command palette.

@@ -113,6 +113,8 @@ import { isMacPlatform } from "../../lib/utils";
 import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { useArchivedProjectActions, useArchivedProjects } from "../../hooks/useArchivedProjects";
+import { listArchivedProjects } from "../../archivedProjects";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import {
@@ -3510,6 +3512,12 @@ export function GeneralSettingsPanel() {
 export function ArchivedThreadsPanel() {
   const { scope, groups: projectGroups, environments } = useSettingsScope();
   const { unarchiveThread, confirmAndDeleteThread } = useThreadActions();
+  const archivedProjectKeys = useArchivedProjects();
+  const archivedProjectActions = useArchivedProjectActions();
+  const archivedProjects = useMemo(
+    () => listArchivedProjects(projectGroups, archivedProjectKeys),
+    [archivedProjectKeys, projectGroups],
+  );
   const {
     snapshots: archivedSnapshots,
     error: archiveError,
@@ -3659,6 +3667,38 @@ export function ArchivedThreadsPanel() {
 
   return (
     <SettingsPageContainer>
+      {archivedProjects.length > 0 ? (
+        <SettingsSection
+          id={searchableSetting("archived-projects").id}
+          title={searchableSetting("archived-projects").title}
+        >
+          {archivedProjects.map((entry) => (
+            <SettingsRow
+              key={entry.physicalProjectKeys.join("|")}
+              title={entry.name ?? entry.path}
+              description={
+                <span className="block truncate">
+                  {entry.name === null ? "Not connected" : entry.path}
+                  {" \u00b7 Archived "}
+                  {formatRelativeTimeLabel(entry.archivedAt)}
+                </span>
+              }
+              control={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  className="shrink-0"
+                  onClick={() => void archivedProjectActions.unarchive(entry.physicalProjectKeys)}
+                >
+                  <ArchiveX className="size-3.5" />
+                  <span>Unarchive</span>
+                </Button>
+              }
+            />
+          ))}
+        </SettingsSection>
+      ) : null}
       {archivedGroups.length === 0 ? (
         <SettingsSection
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}

@@ -520,6 +520,10 @@ export const ClientSettingsSchema = Schema.Struct({
     TrimmedNonEmptyString,
     SidebarCustomProjectGroupId,
   ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  /** Physical project key to the ISO time it was archived; archived projects are hidden, never deleted. */
+  sidebarArchivedProjects: Schema.Record(TrimmedNonEmptyString, Schema.String).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   sidebarThreadSortOrder: SidebarThreadSortOrder.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_SORT_ORDER)),
   ),
@@ -1684,6 +1688,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarCustomProjectGroupAssignments: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, SidebarCustomProjectGroupId),
   ),
+  sidebarArchivedProjects: Schema.optionalKey(Schema.Record(TrimmedNonEmptyString, Schema.String)),
   sidebarThreadSortOrder: Schema.optionalKey(SidebarThreadSortOrder),
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
   timestampFormat: Schema.optionalKey(TimestampFormat),

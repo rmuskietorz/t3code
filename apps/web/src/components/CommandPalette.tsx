@@ -57,6 +57,7 @@ import {
 import { useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import {
+  ArchiveIcon,
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
@@ -111,6 +112,8 @@ import {
   promptLinkRepositoryOf,
 } from "./promptLinks/copyPromptLink";
 import { useClientSettings } from "../hooks/useSettings";
+import { useArchivedProjectActions } from "../hooks/useArchivedProjects";
+import { filterArchivedSidebarProjects } from "../archivedProjects";
 import { useTheme } from "../hooks/useTheme";
 import { useCustomThemes } from "../hooks/useCustomThemes";
 import { useEnvironmentThemeDefinitions } from "../hooks/useEnvironmentTheme";
@@ -612,6 +615,7 @@ function OpenCommandPaletteDialog(props: {
   const navigate = useNavigate();
   const router = useRouter();
   const pathname = useLocation({ select: (location) => location.pathname });
+  const archivedProjectActions = useArchivedProjectActions();
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const [query, setQuery] = useState(openIntent?.kind === "search" ? openIntent.query : "");
   const [linkedThreadSearch, setLinkedThreadSearch] = useState(
@@ -872,10 +876,14 @@ function OpenCommandPaletteDialog(props: {
   const projectGroups = useMemo(
     () =>
       filterToSidebarProfile(
-        sortLogicalProjectsForSidebar(
-          unsortedProjectGroups,
-          threads,
-          clientSettings.sidebarProjectSortOrder,
+        filterArchivedSidebarProjects(
+          sortLogicalProjectsForSidebar(
+            unsortedProjectGroups,
+            threads,
+            clientSettings.sidebarProjectSortOrder,
+          ),
+          (project) => project.memberProjects,
+          clientSettings.sidebarArchivedProjects,
         ),
         (project) => project.memberProjects,
         sidebarProfile.profile,
@@ -885,6 +893,7 @@ function OpenCommandPaletteDialog(props: {
         },
       ),
     [
+      clientSettings.sidebarArchivedProjects,
       clientSettings.sidebarCustomProjectGroupAssignments,
       clientSettings.sidebarCustomProjectGroups,
       clientSettings.sidebarProjectSortOrder,
@@ -2367,6 +2376,32 @@ function OpenCommandPaletteDialog(props: {
       await navigate({ to: "/settings" });
     },
   });
+
+  // Only the project in context, never the fallback below, so this cannot archive an unrelated project.
+  const archivableProjectGroup = contextualProjectRef
+    ? projectGroups.find((project) =>
+        project.memberProjectRefs.some(
+          (ref) =>
+            ref.environmentId === contextualProjectRef.environmentId &&
+            ref.projectId === contextualProjectRef.projectId,
+        ),
+      )
+    : undefined;
+  if (archivableProjectGroup) {
+    actionItems.push({
+      kind: "action",
+      value: "action:archive-project",
+      searchTerms: ["project", "archive", "hide"],
+      title: "Archive project",
+      description: archivableProjectGroup.displayName,
+      icon: <ArchiveIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await archivedProjectActions.archive(
+          archivableProjectGroup.memberProjects.map((member) => member.physicalProjectKey),
+        );
+      },
+    });
+  }
 
   const contextualProjectGroup =
     (contextualProjectRef

@@ -155,6 +155,7 @@ describe("ClientSettings custom project groups", () => {
       sidebarCustomProjectGroupsEnabled: false,
       sidebarCustomProjectGroups: [],
       sidebarCustomProjectGroupAssignments: {},
+      sidebarArchivedProjects: {},
     });
   });
 

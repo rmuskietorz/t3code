@@ -1002,6 +1002,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/archived",
     searchTerms: ["restore reopen deleted history projects"],
   },
+  {
+    id: "archived-projects",
+    title: "Archived projects",
+    to: "/settings/archived",
+    searchTerms: ["hidden sidebar unarchive restore show"],
+  },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 
 export type SettingsSearchItemId = (typeof SETTINGS_SEARCH_ITEMS)[number]["id"];

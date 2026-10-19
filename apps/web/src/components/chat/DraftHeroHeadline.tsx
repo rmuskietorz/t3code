@@ -13,6 +13,8 @@ import { primaryServerKeybindingsAtom } from "~/state/server";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { useScratchProject } from "~/hooks/useScratchProject";
 import { useClientSettings } from "~/hooks/useSettings";
+import { useArchivedProjects } from "~/hooks/useArchivedProjects";
+import { filterArchivedSidebarProjects } from "~/archivedProjects";
 import { hasExplicitComposerModelSelection } from "~/lib/chatThreadActions";
 import {
   deriveLogicalProjectKeyFromSettings,
@@ -84,20 +86,26 @@ export function DraftHeroHeadline({
       ),
     [environments],
   );
+  const archivedProjects = useArchivedProjects();
   const projectGroups = useMemo(
     () =>
       sortLogicalProjectsForSidebar(
-        buildSidebarProjectSnapshots({
-          projects,
-          settings: projectGroupingSettings,
-          primaryEnvironmentId,
-          resolveEnvironmentLabel: (environmentId) =>
-            environmentLabelById.get(environmentId) ?? null,
-        }),
+        filterArchivedSidebarProjects(
+          buildSidebarProjectSnapshots({
+            projects,
+            settings: projectGroupingSettings,
+            primaryEnvironmentId,
+            resolveEnvironmentLabel: (environmentId) =>
+              environmentLabelById.get(environmentId) ?? null,
+          }),
+          (project) => project.memberProjects,
+          archivedProjects,
+        ),
         threads,
         projectSortOrder,
       ),
     [
+      archivedProjects,
       environmentLabelById,
       primaryEnvironmentId,
       projectGroupingSettings,

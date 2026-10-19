@@ -188,6 +188,8 @@ import {
   useCustomProjectGroups,
   useCustomProjectGroupsEnabled,
 } from "~/hooks/useCustomProjectGroups";
+import { useArchivedProjectActions, useArchivedProjects } from "~/hooks/useArchivedProjects";
+import { filterArchivedSidebarProjects } from "~/archivedProjects";
 import {
   type SidebarBulkExpansionAction,
   useSidebarBulkExpansionHandler,
@@ -1232,6 +1234,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     (settings) => settings.sidebarCustomProjectGroupAssignments,
   );
   const customProjectGroupActions = useCustomProjectGroupActions();
+  const archivedProjectActions = useArchivedProjectActions();
   const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -1818,6 +1821,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           ],
         };
 
+        actionHandlers.set("archive-project", () => {
+          void archivedProjectActions.archive(memberKeys);
+        });
         actionHandlers.set("project-settings", () => {
           if (isMobile) setOpenMobile(false);
           void router.navigate({
@@ -1835,6 +1841,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             buildTargetedItem("grouping", "Group into..."),
             ...(customProjectGroupsEnabled ? [moveToGroupItem] : []),
             buildTargetedItem("copy-path", "Copy Path"),
+            { id: "archive-project", label: "Archive project", icon: "archive" },
             { id: "project-settings", label: "Project settings", icon: "settings" },
             buildTargetedItem("delete", "Remove", {
               destructive: true,
@@ -1856,6 +1863,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       })();
     },
     [
+      archivedProjectActions,
       copyPathToClipboard,
       customProjectGroupActions,
       customProjectGroupAssignments,
@@ -3463,8 +3471,9 @@ export default function LegacySidebar() {
     [orderedProjects],
   );
 
-  const sidebarProjects = useMemo<SidebarProjectSnapshot[]>(() => {
-    return buildSidebarProjectSnapshots({
+  const archivedProjects = useArchivedProjects();
+  const sidebarProjects = useMemo<ReadonlyArray<SidebarProjectSnapshot>>(() => {
+    const snapshots = buildSidebarProjectSnapshots({
       projects: orderedProjects,
       settings: projectGroupingSettings,
       primaryEnvironmentId,
@@ -3472,7 +3481,13 @@ export default function LegacySidebar() {
       isDesktopLocalEnvironment: (environmentId) => desktopLocalEnvironmentIds.has(environmentId),
       isWslEnvironment: (environmentId) => wslEnvironmentIds.has(environmentId),
     });
+    return filterArchivedSidebarProjects(
+      snapshots,
+      (project) => project.memberProjects,
+      archivedProjects,
+    );
   }, [
+    archivedProjects,
     environmentLabelById,
     desktopLocalEnvironmentIds,
     wslEnvironmentIds,

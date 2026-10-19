@@ -159,6 +159,8 @@ import {
   useCustomProjectGroups,
   useCustomProjectGroupsEnabled,
 } from "../hooks/useCustomProjectGroups";
+import { useArchivedProjectActions, useArchivedProjects } from "../hooks/useArchivedProjects";
+import { filterArchivedSidebarProjects, isSidebarProjectArchived } from "../archivedProjects";
 import {
   buildCustomGroupScopeSections,
   buildSidebarProjectScopeItems,
@@ -2390,7 +2392,29 @@ export default function Sidebar() {
     [environments],
   );
   const environmentMachineById = useEnvironmentMachines();
-  const projectGroups = useSidebarProjectGroups();
+  const allProjectGroups = useSidebarProjectGroups();
+  const archivedProjects = useArchivedProjects();
+  const archivedProjectActions = useArchivedProjectActions();
+  const projectGroups = useMemo(
+    () =>
+      filterArchivedSidebarProjects(
+        allProjectGroups,
+        (project) => project.memberProjects,
+        archivedProjects,
+      ),
+    [allProjectGroups, archivedProjects],
+  );
+  const archivedProjectRefKeys = useMemo(
+    () =>
+      new Set(
+        allProjectGroups.flatMap((project) =>
+          isSidebarProjectArchived(project.memberProjects, archivedProjects)
+            ? project.memberProjectRefs.map((ref) => `${ref.environmentId}:${ref.projectId}`)
+            : [],
+        ),
+      ),
+    [allProjectGroups, archivedProjects],
+  );
   const projectGroupsRef = useRef(projectGroups);
   projectGroupsRef.current = projectGroups;
   // Threads on non-primary environments (T3 Connect, hosted) resolve their
@@ -2711,12 +2735,15 @@ export default function Sidebar() {
               },
             ],
           },
+          { id: "archive-project", label: "Archive project", icon: "archive" },
           { id: "project-settings", label: "Project settings", icon: "settings" },
         ],
         position,
       );
       if (clicked === "project-settings") {
         openProjectSettings(projectGroup);
+      } else if (clicked === "archive-project") {
+        void archivedProjectActions.archive(memberKeys);
       } else if (clicked?.startsWith("move-to-group:")) {
         const target = clicked.slice("move-to-group:".length);
         void customProjectGroupActions.assignProjects(
@@ -2752,7 +2779,9 @@ export default function Sidebar() {
   } = useMemo(() => {
     void snoozeWakeTick;
     const preciseNow = new Date().toISOString();
-    const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys);
+    const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys).filter(
+      (thread) => !archivedProjectRefKeys.has(`${thread.environmentId}:${thread.projectId}`),
+    );
     inboxReturns.observe(workingShelfEnabled ? threads : null);
     const pinned: EnvironmentThreadShell[] = [];
     const active: EnvironmentThreadShell[] = [];
