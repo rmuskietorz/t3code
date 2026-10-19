@@ -57,7 +57,13 @@ type RecentThreadsOptions = Parameters<
   AgentSessionScanner.AgentSessionScanner["Service"]["recentThreads"]
 >[2];
 
-const makeImporterTest = (input: { readonly providerThreadOwner?: ThreadId } = {}) => {
+const makeImporterTest = (
+  input: {
+    readonly providerThreadOwner?: ThreadId;
+    /** Whether T3 already ran turns on the imported thread. */
+    readonly continuedInT3?: boolean;
+  } = {},
+) => {
   const writes: Array<ReadonlyArray<OrchestrationV2DomainEvent>> = [];
   const upserts: Array<unknown> = [];
   const recorded: Array<unknown> = [];
@@ -95,6 +101,7 @@ const makeImporterTest = (input: { readonly providerThreadOwner?: ThreadId } = {
             imported
               ? Effect.succeed({
                   thread: { id: threadId, projectId, historyOrigin: "v1_import" },
+                  runs: (input.continuedInT3 ?? true) ? [{ id: "run-1" }] : [],
                 } as never)
               : Effect.fail(new Orchestrator.OrchestratorProjectionError({ threadId })),
         }),
@@ -173,6 +180,36 @@ it.effect("imports messages once and preserves the provider native resume bindin
       }),
     ]);
     expect(recorded).toHaveLength(2);
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("refreshes an imported thread the terminal continued while T3 has not", () => {
+  const { layer, writes } = makeImporterTest({ continuedInT3: false });
+
+  return Effect.gen(function* () {
+    const importer = yield* AgentSessionImporter.AgentSessionImporter;
+    yield* importer.importRecentAgentThreads({ projectId });
+    yield* importer.importRecentAgentThreads({ projectId });
+
+    expect(writes).toHaveLength(2);
+    const refresh = writes[1]!;
+    expect(refresh.map((event) => event.type)).toEqual([
+      "message.updated",
+      "turn-item.updated",
+      "message.updated",
+      "turn-item.updated",
+    ]);
+    // Same messages under new event ids: the refresh updates rather than duplicates them.
+    const updatedIds = (events: ReadonlyArray<OrchestrationV2DomainEvent>) =>
+      events.flatMap((event) =>
+        event.type === "message.updated" || event.type === "turn-item.updated"
+          ? [event.payload.id]
+          : [],
+      );
+    expect(updatedIds(refresh)).toEqual(updatedIds(writes[0]!));
+    expect(new Set([...writes[0]!, ...refresh].map((event) => event.id)).size).toBe(
+      writes[0]!.length + refresh.length,
+    );
   }).pipe(Effect.provide(layer));
 });
 

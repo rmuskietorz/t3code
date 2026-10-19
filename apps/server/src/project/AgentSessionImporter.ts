@@ -97,9 +97,12 @@ function messageEvents(input: {
   readonly threadId: ThreadId;
   readonly index: number;
   readonly message: AgentSessionScanner.AgentSessionThreadMessage;
+  /** Distinguishes the events of a later refresh, which update the same messages. */
+  readonly revision?: string;
 }): ReadonlyArray<OrchestrationV2DomainEvent> {
   const ordinal = input.index + 1;
   const suffix = String(input.index).padStart(6, "0");
+  const eventSuffix = input.revision === undefined ? suffix : `${suffix}:rev:${input.revision}`;
   const messageId = MessageId.make(`${input.threadId}:${suffix}`);
   const turnItemId = TurnItemId.make(
     `${IMPORT_EVENT_PREFIX}:turn-item:${input.threadId}:${suffix}`,
@@ -156,14 +159,14 @@ function messageEvents(input: {
         };
   return [
     {
-      id: EventId.make(`${IMPORT_EVENT_PREFIX}:message:${input.threadId}:${suffix}`),
+      id: EventId.make(`${IMPORT_EVENT_PREFIX}:message:${input.threadId}:${eventSuffix}`),
       type: "message.updated",
       threadId: input.threadId,
       occurredAt: at,
       payload: message,
     },
     {
-      id: EventId.make(`${IMPORT_EVENT_PREFIX}:turn-item:${input.threadId}:${suffix}`),
+      id: EventId.make(`${IMPORT_EVENT_PREFIX}:turn-item:${input.threadId}:${eventSuffix}`),
       type: "turn-item.updated",
       threadId: input.threadId,
       occurredAt: at,
@@ -263,6 +266,21 @@ const make = Effect.gen(function* () {
             }
             if (existing.value.thread.historyOrigin !== "v1_import") {
               return yield* new AgentSessionThreadModifiedError({ threadId });
+            }
+            // The conversation went on outside T3. Until a T3 run continues the
+            // thread, its history still mirrors the transcript, so show what was added.
+            const { runs } = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
+            if (runs.length === 0) {
+              yield* eventSink.write({
+                events: thread.messages.flatMap((message, index) =>
+                  messageEvents({
+                    threadId,
+                    index,
+                    message,
+                    revision: `${source.size}-${source.mtimeMs}`,
+                  }),
+                ),
+              });
             }
             yield* runtimes.recordImportedTranscript({ threadId, source });
             return "updated" as const;
