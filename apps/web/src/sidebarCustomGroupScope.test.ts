@@ -9,6 +9,7 @@ import {
   resolveCustomGroupScope,
 } from "./sidebarCustomGroupScope";
 import type { SidebarProjectSnapshot } from "./sidebarProjectGrouping";
+import { sortCustomProjectGroupItems } from "./components/Sidebar.logic";
 
 const project = (projectKey: string, displayName: string, workspaceRoot: string) =>
   ({
@@ -30,7 +31,11 @@ const settings = {
   sidebarCustomProjectGroupAssignments: {},
 };
 
-const sections = buildCustomGroupScopeSections([tankivo, pimcore, scratch], settings);
+const sections = buildCustomGroupScopeSections(
+  [tankivo, pimcore, scratch],
+  settings,
+  (projects) => projects,
+);
 const items = buildSidebarProjectScopeItems([tankivo, pimcore, scratch], sections);
 const matchesLabel = (item: { label: string }, query: string) =>
   item.label.toLowerCase().includes(query.toLowerCase());
@@ -40,6 +45,39 @@ describe("custom group scope keys", () => {
     expect(parseCustomGroupScopeKey(customGroupScopeKey("work"))).toBe("work");
     expect(parseCustomGroupScopeKey("github.com/owner/repo")).toBeNull();
     expect(parseCustomGroupScopeKey(null)).toBeNull();
+  });
+});
+
+describe("buildCustomGroupScopeSections", () => {
+  it("re-sorts only groups with their own project sort order", () => {
+    const alpha = project("alpha", "alpha", "/home/robmus/projects/alpha");
+    const zend = project("zend", "Zend", "/var/www/Zend");
+    const sorted = buildCustomGroupScopeSections(
+      [zend, tankivo, alpha, pimcore],
+      {
+        ...settings,
+        sidebarCustomProjectGroups: [
+          {
+            id: "private",
+            name: "Privat",
+            pathRules: ["/home/robmus/projects/**"],
+            projectSortOrder: "name",
+          },
+          { id: "work", name: "Arbeit", pathRules: ["/var/www/*"], projectSortOrder: "inherit" },
+        ],
+      },
+      (projects, sortOrder) =>
+        sortCustomProjectGroupItems({
+          items: projects,
+          sortOrder,
+          projectOrder: [],
+          sortByActivity: (items) => items,
+        }),
+    );
+    expect(sorted.map((section) => section.projects.map((entry) => entry.displayName))).toEqual([
+      ["alpha", "Tankivo"],
+      ["Zend", "PimCore"],
+    ]);
   });
 });
 

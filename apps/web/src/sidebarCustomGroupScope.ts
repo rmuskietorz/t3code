@@ -1,6 +1,8 @@
 import {
   partitionIntoCustomProjectGroups,
+  sortCustomProjectGroupSections,
   UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
+  type CustomProjectGroupItemSortOrder,
   type CustomProjectGroupSettings,
 } from "@t3tools/client-runtime/state/custom-project-groups";
 
@@ -32,11 +34,14 @@ export interface CustomGroupScopeSection {
 export function buildCustomGroupScopeSections(
   projectGroups: ReadonlyArray<SidebarProjectSnapshot>,
   settings: CustomProjectGroupSettings,
+  sortGroupItems: (
+    items: ReadonlyArray<SidebarProjectSnapshot>,
+    sortOrder: CustomProjectGroupItemSortOrder,
+  ) => ReadonlyArray<SidebarProjectSnapshot>,
 ): ReadonlyArray<CustomGroupScopeSection> {
-  return partitionIntoCustomProjectGroups(
-    projectGroups,
-    (project) => project.memberProjects,
-    settings,
+  return sortCustomProjectGroupSections(
+    partitionIntoCustomProjectGroups(projectGroups, (project) => project.memberProjects, settings),
+    sortGroupItems,
   ).flatMap((section) =>
     section.items.length === 0
       ? []

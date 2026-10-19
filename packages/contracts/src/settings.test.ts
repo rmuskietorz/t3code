@@ -175,6 +175,26 @@ describe("ClientSettings custom project groups", () => {
     ]);
   });
 
+  it("keeps a group's project sort order and falls back to inherit for unknown values", () => {
+    const settings = decodeClientSettings({
+      sidebarCustomProjectGroups: [
+        { id: "work", name: "Work", projectSortOrder: "name" },
+        { id: "future", name: "Future", projectSortOrder: "by-color" },
+        { id: "old", name: "Old" },
+      ],
+    });
+    expect(settings.sidebarCustomProjectGroups.map((group) => group.projectSortOrder)).toEqual([
+      "name",
+      "inherit",
+      undefined,
+    ]);
+    expect(
+      decodeClientSettingsPatch({
+        sidebarCustomProjectGroups: [{ id: "work", name: "Work", projectSortOrder: "manual" }],
+      }).sidebarCustomProjectGroups?.[0]?.projectSortOrder,
+    ).toBe("manual");
+  });
+
   it("rejects a malformed group in a patch", () => {
     expect(() =>
       decodeClientSettingsPatch({ sidebarCustomProjectGroups: [{ id: "x", name: " " }] }),

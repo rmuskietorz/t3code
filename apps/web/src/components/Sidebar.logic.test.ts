@@ -49,6 +49,7 @@ import {
   sortInboxThreadsByReturn,
   resolveSidebarDropTarget,
   planSidebarThreadDrop,
+  sortCustomProjectGroupItems,
   sortPinnedThreadsForSidebar,
   sortProjectsForSidebar,
   sortScopedProjectsForSidebar,
@@ -1564,6 +1565,39 @@ describe("getFallbackThreadIdAfterDelete", () => {
     });
 
     expect(fallbackThreadId).toBe(ThreadId.make("thread-next"));
+  });
+});
+describe("sortCustomProjectGroupItems", () => {
+  const row = (projectKey: string, displayName: string) => ({
+    projectKey,
+    displayName,
+    memberProjects: [
+      { physicalProjectKey: `local:/src/${projectKey}`, workspaceRoot: `/src/${projectKey}` },
+    ],
+  });
+  const rows = [row("zed", "zed"), row("beta", "Beta"), row("alpha", "alpha")];
+  const sort = (sortOrder: "manual" | "name" | "updated_at", projectOrder: string[] = []) =>
+    sortCustomProjectGroupItems({
+      items: rows,
+      sortOrder,
+      projectOrder,
+      sortByActivity: (items) => items.toReversed(),
+    }).map((item) => item.projectKey);
+
+  it("sorts by display name ignoring case", () => {
+    expect(sort("name")).toEqual(["alpha", "beta", "zed"]);
+  });
+
+  it("follows the stored manual project order and keeps unknown rows after it", () => {
+    expect(sort("manual", ["local:/src/beta", "local:/src/missing", "local:/src/alpha"])).toEqual([
+      "beta",
+      "alpha",
+      "zed",
+    ]);
+  });
+
+  it("delegates recent activity to the sidebar's own activity sort", () => {
+    expect(sort("updated_at")).toEqual(["alpha", "beta", "zed"]);
   });
 });
 describe("sortProjectsForSidebar", () => {

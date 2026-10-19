@@ -178,6 +178,8 @@ import { useSidebarProfile } from "~/sidebarProfile";
 import { SidebarExpansionMenu, sidebarExpansionMenuGroups } from "./sidebar/SidebarExpansionMenu";
 import {
   partitionIntoCustomProjectGroups,
+  resolveCustomProjectGroupSortOrder,
+  sortCustomProjectGroupSections,
   UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
   type CustomProjectGroupSection,
 } from "@t3tools/client-runtime/state/custom-project-groups";
@@ -221,6 +223,7 @@ import {
   resolveThreadStatusPill,
   orderItemsByPreferredIds,
   shouldClearThreadSelectionOnMouseDown,
+  sortCustomProjectGroupItems,
   sortProjectsForSidebar,
   useSidebarRowSubscriptionLease,
   useThreadJumpHintVisibility,
@@ -247,11 +250,7 @@ import {
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
-const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
-  updated_at: "Last user message",
-  created_at: "Created at",
-  manual: "Manual",
-};
+import { SIDEBAR_PROJECT_SORT_ORDER_LABELS } from "./sidebar/customProjectGroupSort";
 const SIDEBAR_THREAD_SORT_LABELS: Record<SidebarThreadSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -2914,13 +2913,15 @@ function ProjectSortMenu({
               onProjectSortOrderChange(value as SidebarProjectSortOrder);
             }}
           >
-            {(Object.entries(SIDEBAR_SORT_LABELS) as Array<[SidebarProjectSortOrder, string]>).map(
-              ([value, label]) => (
-                <MenuRadioItem key={value} value={value}>
-                  {label}
-                </MenuRadioItem>
-              ),
-            )}
+            {(
+              Object.entries(SIDEBAR_PROJECT_SORT_ORDER_LABELS) as Array<
+                [SidebarProjectSortOrder, string]
+              >
+            ).map(([value, label]) => (
+              <MenuRadioItem key={value} value={value}>
+                {label}
+              </MenuRadioItem>
+            ))}
           </MenuRadioGroup>
         </MenuGroup>
         <MenuGroup>
@@ -3031,7 +3032,7 @@ interface SidebarProjectsContentProps {
   threadPreviewCount: SidebarThreadPreviewCount;
   updateSettings: ReturnType<typeof useUpdateClientSettings>;
   openAddProject: () => void;
-  isManualProjectSorting: boolean;
+  isProjectDragEnabled: boolean;
   projectDnDSensors: ReturnType<typeof useSensors>;
   projectCollisionDetection: CollisionDetection;
   handleProjectDragStart: (event: DragStartEvent) => void;
@@ -3080,7 +3081,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     threadPreviewCount,
     updateSettings,
     openAddProject,
-    isManualProjectSorting,
+    isProjectDragEnabled,
     projectDnDSensors,
     projectCollisionDetection,
     handleProjectDragStart,
@@ -3132,8 +3133,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     [updateSettings],
   );
 
-  const renderProjects = (projects: readonly SidebarProjectSnapshot[]) =>
-    isManualProjectSorting ? (
+  const renderProjects = (projects: readonly SidebarProjectSnapshot[], reorderable: boolean) =>
+    reorderable ? (
       <SortableContext
         items={projects.map((project) => project.projectKey)}
         strategy={verticalListSortingStrategy}
@@ -3161,7 +3162,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 dragInProgressRef={dragInProgressRef}
                 suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
                 suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
-                isManualProjectSorting={isManualProjectSorting}
+                isManualProjectSorting
                 dragHandleProps={dragHandleProps}
               />
             )}
@@ -3191,14 +3192,14 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           dragInProgressRef={dragInProgressRef}
           suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
           suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
-          isManualProjectSorting={isManualProjectSorting}
+          isManualProjectSorting={false}
           dragHandleProps={null}
         />
       ))
     );
 
   const renderProjectSections = () => {
-    if (projectSections === null) return renderProjects(sortedProjects);
+    if (projectSections === null) return renderProjects(sortedProjects, isProjectDragEnabled);
     const sectionKeys = projectSections.map(
       (section) => section.group?.id ?? UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
     );
@@ -3218,9 +3219,17 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 projectCount={section.items.length}
                 collapsed={collapsed}
                 onToggleCollapsed={() => toggleProjectGroupCollapsed(groupKey)}
-                sortable={isManualProjectSorting}
+                sortable={isProjectDragEnabled}
+                globalProjectSortOrder={projectSortOrder}
               />
-              {collapsed ? null : renderProjects(section.items)}
+              {collapsed
+                ? null
+                : renderProjects(
+                    section.items,
+                    isProjectDragEnabled &&
+                      resolveCustomProjectGroupSortOrder(section.group, projectSortOrder) ===
+                        "manual",
+                  )}
             </React.Fragment>
           );
         })}
@@ -3312,7 +3321,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           </div>
         </div>
 
-        {isManualProjectSorting ? (
+        {isProjectDragEnabled ? (
           <DndContext
             sensors={projectDnDSensors}
             collisionDetection={projectCollisionDetection}
@@ -3569,17 +3578,6 @@ export default function LegacySidebar() {
     return closestCorners(args);
   }, []);
 
-  const handleProjectDragStart = useCallback(
-    (_event: DragStartEvent) => {
-      if (sidebarProjectSortOrder !== "manual") {
-        return;
-      }
-      dragInProgressRef.current = true;
-      suppressProjectClickAfterDragRef.current = true;
-    },
-    [sidebarProjectSortOrder],
-  );
-
   const handleProjectDragCancel = useCallback((_event: DragCancelEvent) => {
     dragInProgressRef.current = false;
   }, []);
@@ -3606,47 +3604,50 @@ export default function LegacySidebar() {
     () => sidebarThreads.filter((thread) => thread.archivedAt === null),
     [sidebarThreads],
   );
-  const sortedProjects = useMemo(() => {
-    const sortableProjects = sidebarProjects.map((project) => ({
-      ...project,
-      id: project.projectKey,
-    }));
-    const sortableThreads = visibleThreads.map((thread) => {
-      const physicalKey =
-        projectPhysicalKeyByScopedRef.get(
-          scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
-        ) ?? scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId));
-      return {
-        ...thread,
-        projectId: (physicalToLogicalKey.get(physicalKey) ?? physicalKey) as ProjectId,
-      };
-    });
-    return sortProjectsForSidebar(
-      sortableProjects,
-      sortableThreads,
-      sidebarProjectSortOrder,
-    ).flatMap((project) => {
-      const resolvedProject = sidebarProjectByKey.get(project.id);
-      return resolvedProject ? [resolvedProject] : [];
-    });
-  }, [
-    sidebarProjectSortOrder,
-    physicalToLogicalKey,
-    projectPhysicalKeyByScopedRef,
-    sidebarProjectByKey,
-    sidebarProjects,
-    visibleThreads,
-  ]);
-  const isManualProjectSorting = sidebarProjectSortOrder === "manual";
+  const sortableThreads = useMemo(
+    () =>
+      visibleThreads.map((thread) => {
+        const physicalKey =
+          projectPhysicalKeyByScopedRef.get(
+            scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
+          ) ?? scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId));
+        return {
+          ...thread,
+          projectId: (physicalToLogicalKey.get(physicalKey) ?? physicalKey) as ProjectId,
+        };
+      }),
+    [physicalToLogicalKey, projectPhysicalKeyByScopedRef, visibleThreads],
+  );
+  const sortSidebarProjects = useCallback(
+    (projectsToSort: readonly SidebarProjectSnapshot[], sortOrder: SidebarProjectSortOrder) =>
+      sortProjectsForSidebar(
+        projectsToSort.map((project) => ({ ...project, id: project.projectKey })),
+        sortableThreads,
+        sortOrder,
+      ).flatMap((project) => {
+        const resolvedProject = sidebarProjectByKey.get(project.id);
+        return resolvedProject ? [resolvedProject] : [];
+      }),
+    [sidebarProjectByKey, sortableThreads],
+  );
+  const sortedProjects = useMemo(
+    () => sortSidebarProjects(sidebarProjects, sidebarProjectSortOrder),
+    [sidebarProjectSortOrder, sidebarProjects, sortSidebarProjects],
+  );
   const projectSections = useMemo(() => {
     if (!customProjectGroupsEnabled) return null;
-    const sections = partitionIntoCustomProjectGroups(
-      sortedProjects,
-      (project) => project.memberProjects,
-      {
+    const sections = sortCustomProjectGroupSections(
+      partitionIntoCustomProjectGroups(sortedProjects, (project) => project.memberProjects, {
         sidebarCustomProjectGroups: customProjectGroups,
         sidebarCustomProjectGroupAssignments: customProjectGroupAssignments,
-      },
+      }),
+      (items, sortOrder) =>
+        sortCustomProjectGroupItems({
+          items,
+          sortOrder,
+          projectOrder,
+          sortByActivity: (groupItems) => sortSidebarProjects(groupItems, "updated_at"),
+        }),
     );
     return sidebarProfile === null
       ? sections
@@ -3658,9 +3659,29 @@ export default function LegacySidebar() {
     customProjectGroupAssignments,
     customProjectGroups,
     customProjectGroupsEnabled,
+    projectOrder,
     sidebarProfile,
+    sortSidebarProjects,
     sortedProjects,
   ]);
+  // A manually sorted group needs drag and drop even when the global order is not manual.
+  const isProjectDragEnabled =
+    sidebarProjectSortOrder === "manual" ||
+    (projectSections?.some(
+      (section) =>
+        resolveCustomProjectGroupSortOrder(section.group, sidebarProjectSortOrder) === "manual",
+    ) ??
+      false);
+  const handleProjectDragStart = useCallback(
+    (_event: DragStartEvent) => {
+      if (!isProjectDragEnabled) {
+        return;
+      }
+      dragInProgressRef.current = true;
+      suppressProjectClickAfterDragRef.current = true;
+    },
+    [isProjectDragEnabled],
+  );
   const projectSectionKeys = useMemo(
     () =>
       projectSections?.map((section) => section.group?.id ?? UNGROUPED_CUSTOM_PROJECT_GROUP_ID) ??
@@ -3691,7 +3712,7 @@ export default function LegacySidebar() {
   );
   const handleProjectDragEnd = useCallback(
     (event: DragEndEvent) => {
-      if (sidebarProjectSortOrder !== "manual") {
+      if (!isProjectDragEnabled) {
         dragInProgressRef.current = false;
         return;
       }
@@ -3735,7 +3756,7 @@ export default function LegacySidebar() {
       orderedProjects,
       projectSectionKeyByProjectKey,
       projectSectionKeys,
-      sidebarProjectSortOrder,
+      isProjectDragEnabled,
       reorderProjects,
       sidebarProjects,
     ],
@@ -4109,7 +4130,7 @@ export default function LegacySidebar() {
         threadPreviewCount={sidebarThreadPreviewCount}
         updateSettings={updateSettings}
         openAddProject={openAddProjectCommandPalette}
-        isManualProjectSorting={isManualProjectSorting}
+        isProjectDragEnabled={isProjectDragEnabled}
         projectDnDSensors={projectDnDSensors}
         projectCollisionDetection={projectCollisionDetection}
         handleProjectDragStart={handleProjectDragStart}

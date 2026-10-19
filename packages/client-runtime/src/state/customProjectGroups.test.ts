@@ -7,6 +7,8 @@ import {
   makeCustomProjectGroupResolver,
   moveCustomProjectGroup,
   partitionIntoCustomProjectGroups,
+  resolveCustomProjectGroupSortOrder,
+  sortCustomProjectGroupSections,
   UNGROUPED_CUSTOM_PROJECT_GROUP_ID,
   type CustomProjectGroupSettings,
 } from "./customProjectGroups.ts";
@@ -147,6 +149,33 @@ describe("partitionIntoCustomProjectGroups", () => {
       "Personal",
       null,
     ]);
+  });
+});
+
+describe("per-group project sort order", () => {
+  it("re-sorts only groups with their own order and leaves ungrouped rows alone", () => {
+    const reversed = { ...personal, projectSortOrder: "name" as const };
+    const sections = sortCustomProjectGroupSections(
+      [
+        { group: { ...work, projectSortOrder: "inherit" as const }, items: ["b", "a"] },
+        { group: reversed, items: ["d", "c"] },
+        { group: null, items: ["f", "e"] },
+      ],
+      (items, sortOrder) => (sortOrder === "name" ? items.toReversed() : items),
+    );
+    expect(sections.map((section) => section.items)).toEqual([
+      ["b", "a"],
+      ["c", "d"],
+      ["f", "e"],
+    ]);
+  });
+
+  it("resolves inherit and ungrouped to the global order", () => {
+    expect(resolveCustomProjectGroupSortOrder(work, "manual")).toBe("manual");
+    expect(resolveCustomProjectGroupSortOrder(null, "created_at")).toBe("created_at");
+    expect(
+      resolveCustomProjectGroupSortOrder({ ...work, projectSortOrder: "name" }, "manual"),
+    ).toBe("name");
   });
 });
 

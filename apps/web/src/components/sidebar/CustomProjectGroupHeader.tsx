@@ -1,6 +1,9 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { SidebarCustomProjectGroup } from "@t3tools/contracts/settings";
+import type {
+  SidebarCustomProjectGroup,
+  SidebarProjectSortOrder,
+} from "@t3tools/contracts/settings";
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -16,6 +19,10 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
+import {
+  buildCustomProjectGroupContextMenuItems,
+  parseCustomProjectGroupSortMenuId,
+} from "./customProjectGroupSort";
 
 /** Sortable ids of group headers, kept apart from project keys in the same drag context. */
 export const customProjectGroupDragId = (groupKey: string) => `custom-project-group:${groupKey}`;
@@ -27,6 +34,7 @@ export function CustomProjectGroupHeader({
   collapsed,
   onToggleCollapsed,
   sortable,
+  globalProjectSortOrder,
 }: {
   /** `null` is the "Ungrouped" section. */
   group: SidebarCustomProjectGroup | null;
@@ -34,8 +42,9 @@ export function CustomProjectGroupHeader({
   projectCount: number;
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  /** Whether the header takes part in drag and drop (manual project order only). */
+  /** Whether project drag and drop is mounted, which needs some manually sorted rows. */
   sortable: boolean;
+  globalProjectSortOrder: SidebarProjectSortOrder;
 }) {
   const actions = useCustomProjectGroupActions();
   const [renameDraft, setRenameDraft] = useState<string | null>(null);
@@ -53,14 +62,13 @@ export function CustomProjectGroupHeader({
     const api = readLocalApi();
     if (!api) return;
     const clicked = await api.contextMenu.show(
-      [
-        { id: "rename", label: "Rename group" },
-        { id: "delete", label: "Delete group", icon: "trash", destructive: true },
-      ],
+      buildCustomProjectGroupContextMenuItems(group, globalProjectSortOrder),
       { x: event.clientX, y: event.clientY },
     );
     if (clicked === "rename") setRenameDraft(group.name);
     if (clicked === "delete") void actions.deleteGroup(group.id);
+    const sortOrder = parseCustomProjectGroupSortMenuId(clicked);
+    if (sortOrder !== null) void actions.setProjectSortOrder(group.id, sortOrder);
   };
 
   const submitRename = () => {

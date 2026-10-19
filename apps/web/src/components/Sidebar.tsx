@@ -245,8 +245,10 @@ import {
   sidebarListItemId,
   sidebarMarkerId,
   sidebarThreadKeyAtY,
+  sortCustomProjectGroupItems,
   sortInboxThreadsByReturn,
   sortPinnedThreadsForSidebar,
+  sortSidebarV2ProjectGroups,
   sortThreadsForSidebar,
   sortWorkingThreadsBySend,
   useThreadJumpHintVisibility,
@@ -2440,12 +2442,21 @@ export default function Sidebar() {
     }),
     [customProjectGroupAssignments, customProjectGroups],
   );
+  const projectOrder = useUiStateStore((store) => store.projectOrder);
   const customGroupSections = useMemo(
     () =>
       customProjectGroupsEnabled
-        ? buildCustomGroupScopeSections(projectGroups, customGroupSettings)
+        ? buildCustomGroupScopeSections(projectGroups, customGroupSettings, (items, sortOrder) =>
+            sortCustomProjectGroupItems({
+              items,
+              sortOrder,
+              projectOrder,
+              sortByActivity: (groupItems) =>
+                sortSidebarV2ProjectGroups(groupItems, threads, "updated_at"),
+            }),
+          )
         : null,
-    [customGroupSettings, customProjectGroupsEnabled, projectGroups],
+    [customGroupSettings, customProjectGroupsEnabled, projectGroups, projectOrder, threads],
   );
   const customGroupScope = useMemo(
     () =>
