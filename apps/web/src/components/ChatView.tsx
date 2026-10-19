@@ -1,3 +1,4 @@
+import { readSplitViewHost } from "../splitViewHost";
 import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/ThreadFindProvider";
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
@@ -2159,6 +2160,10 @@ export default function ChatView(props: ChatViewProps) {
   );
   const isServerThread = serverThread !== null;
   const activeThread = isServerThread ? serverThread : localDraftThread;
+  const activeThreadTitle = activeThread?.title ?? null;
+  useEffect(() => {
+    readSplitViewHost()?.reportPaneTitle?.(activeThreadTitle);
+  }, [activeThreadTitle]);
   const serverLatestRun = useMemo(
     () => (serverProjection === null ? null : deriveLatestThreadRun(serverProjection)),
     [serverProjection],

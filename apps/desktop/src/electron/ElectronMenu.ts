@@ -8,6 +8,8 @@ import * as Schema from "effect/Schema";
 
 import * as Electron from "electron";
 
+import { viewportOffset } from "../window/RendererContents.ts";
+
 export interface ElectronMenuPosition {
   readonly x: number;
   readonly y: number;
@@ -15,6 +17,8 @@ export interface ElectronMenuPosition {
 
 export interface ElectronMenuContextInput {
   readonly window: Electron.BrowserWindow;
+  /** The renderer the position is relative to; the window's own page when omitted. */
+  readonly contents?: Electron.WebContents;
   readonly items: readonly ContextMenuItem[];
   readonly position: Option.Option<ElectronMenuPosition>;
 }
@@ -241,9 +245,10 @@ export const make = Effect.gen(function* () {
 
         try {
           const menu = Electron.Menu.buildFromTemplate(buildTemplate(normalizedItems, complete));
-          const popupPosition = normalizePosition(
-            input.position,
-            input.window.webContents.getZoomFactor(),
+          const source = input.contents ?? input.window.webContents;
+          const offset = viewportOffset(source);
+          const popupPosition = normalizePosition(input.position, source.getZoomFactor()).pipe(
+            Option.map(({ x, y }) => ({ x: x + offset.x, y: y + offset.y })),
           );
           const popupOptions = Option.match(popupPosition, {
             onNone: (): Electron.PopupOptions => ({

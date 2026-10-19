@@ -76,6 +76,8 @@ export class DesktopEnvironment extends Context.Service<
     readonly appUserModelId: string;
     /** A side-by-side install with its own scheme, profile and app id; see ElectronProtocol. */
     readonly desktopInstance: Option.Option<string>;
+    /** Windows show the app in split view panes; see window/SplitView.ts. */
+    readonly splitView: boolean;
     /** Replaces the V1 profile as the one-time Local Storage import source. */
     readonly localStorageImport: Option.Option<{
       readonly directory: string;
@@ -246,6 +248,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
           }),
     ),
     desktopInstance: config.desktopInstance,
+    splitView: config.splitView,
     localStorageImport: Option.zipWith(
       config.importLocalStorageDir,
       config.importLocalStorageOrigin,

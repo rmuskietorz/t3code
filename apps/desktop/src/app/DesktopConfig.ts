@@ -39,6 +39,7 @@ export const DesktopConfig = Config.all({
   xdgDataHome: trimmedString("XDG_DATA_HOME"),
   t3Home: trimmedString("T3CODE_HOME"),
   desktopInstance: trimmedString("T3CODE_DESKTOP_INSTANCE"),
+  splitView: optionalBoolean("T3CODE_DESKTOP_SPLIT_VIEW"),
   importLocalStorageDir: trimmedString("T3CODE_DESKTOP_IMPORT_LOCAL_STORAGE_DIR"),
   importLocalStorageOrigin: trimmedString("T3CODE_DESKTOP_IMPORT_LOCAL_STORAGE_ORIGIN"),
   devServerUrl: Config.URL("VITE_DEV_SERVER_URL").pipe(Config.option),

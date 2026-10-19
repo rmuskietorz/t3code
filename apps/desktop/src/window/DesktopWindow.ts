@@ -25,7 +25,7 @@ import {
   TRACKPAD_SCROLL_END_CHANNEL,
   WINDOW_FULLSCREEN_STATE_CHANNEL,
 } from "../ipc/channels.ts";
-import { PASSKEY_BRIDGE_ARGUMENT } from "../preview/GuestProtocol.ts";
+import { PASSKEY_BRIDGE_ARGUMENT, SPLIT_VIEW_PANE_ARGUMENT } from "../preview/GuestProtocol.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 import * as PreviewPasskeys from "../preview/Passkeys.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
@@ -34,8 +34,15 @@ import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
 import { copyContextMenuImage } from "./ContextMenuImage.ts";
+import { activeRenderer, allRenderers } from "./RendererContents.ts";
+import { SplitSession } from "./SplitSession.ts";
+import {
+  defaultSplitWindowState,
+  installSplitViewIpc,
+  SplitView,
+  type SplitWindowState,
+} from "./SplitView.ts";
 
-const TITLEBAR_HEIGHT = 40;
 // Matches --workspace-topbar-height in apps/web/src/index.css. Native macOS
 // buttons are 14 points tall and do not scale with the renderer's zoom.
 const MACOS_WORKSPACE_TOPBAR_HEIGHT = 52;
@@ -46,16 +53,18 @@ function syncMacosWindowButtons(window: Electron.BrowserWindow): void {
   window.setWindowButtonPosition({
     x: 16,
     y: Math.round(
-      (MACOS_WORKSPACE_TOPBAR_HEIGHT * window.webContents.getZoomFactor()) / 2 -
+      (MACOS_WORKSPACE_TOPBAR_HEIGHT * activeRenderer(window).getZoomFactor()) / 2 -
         MACOS_WINDOW_BUTTON_RADIUS,
     ),
   });
 }
 
+const TITLEBAR_HEIGHT = 40;
 const TITLEBAR_COLOR = "#01000000"; // #00000000 does not work correctly on Linux
 const TITLEBAR_LIGHT_SYMBOL_COLOR = "#1f2937";
 const TITLEBAR_DARK_SYMBOL_COLOR = "#f8fafc";
 const MAIN_WINDOW_BOUNDS_PERSIST_DEBOUNCE_MS = 500;
+const CASCADE_OFFSET = 32;
 const DEVELOPMENT_LOAD_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
 const RENDERER_RECOVERY_RELOAD_DELAY_MS = 500;
 const RENDERER_RECOVERY_MAX_ATTEMPTS = 3;
@@ -228,6 +237,7 @@ export function concealPendingQuitWindow(
 function getWindowTitleBarOptions(
   shouldUseDarkColors: boolean,
   platform: NodeJS.Platform,
+  splitView: boolean,
 ): WindowTitleBarOptions {
   if (platform === "darwin") {
     return {
@@ -238,6 +248,11 @@ function getWindowTitleBarOptions(
       },
     };
   }
+
+  // Only a window's own webContents gets the overlay's titlebar-area insets, so
+  // a split view pane would draw under the window controls. A native frame
+  // keeps them apart.
+  if (splitView) return {};
 
   return {
     titleBarStyle: "hidden",
@@ -253,6 +268,7 @@ function syncWindowAppearance(
   window: Electron.BrowserWindow,
   shouldUseDarkColors: boolean,
   platform: NodeJS.Platform,
+  splitView: boolean,
 ): Effect.Effect<void> {
   return Effect.sync(() => {
     if (window.isDestroyed()) {
@@ -260,7 +276,7 @@ function syncWindowAppearance(
     }
 
     window.setBackgroundColor(getInitialWindowBackgroundColor(shouldUseDarkColors));
-    const { titleBarOverlay } = getWindowTitleBarOptions(shouldUseDarkColors, platform);
+    const { titleBarOverlay } = getWindowTitleBarOptions(shouldUseDarkColors, platform, splitView);
     if (typeof titleBarOverlay === "object") {
       window.setTitleBarOverlay(titleBarOverlay);
     }
@@ -329,17 +345,29 @@ export const make = Effect.gen(function* () {
   const currentMainWindow = electronWindow.currentMainOrFirst.pipe(Effect.flatMap(withoutSplash));
   const focusedMainWindow = electronWindow.focusedMainOrFirst.pipe(Effect.flatMap(withoutSplash));
 
-  const createWindow = Effect.fn("desktop.window.createWindow")(function* (): Effect.fn.Return<
-    Electron.BrowserWindow,
-    DesktopWindowError
-  > {
+  const splitSession = new SplitSession(
+    environment.path.join(environment.stateDir, "split-session.json"),
+    (message, cause) => void runPromise(logWindowWarning(message, { cause })),
+  );
+  if (environment.splitView) {
+    installSplitViewIpc();
+    Electron.app.on("before-quit", () => splitSession.freeze());
+  }
+
+  const createWindow = Effect.fn("desktop.window.createWindow")(function* (options: {
+    readonly state: SplitWindowState;
+    readonly initialPath: string | null;
+    /** Only the main window's bounds go to the desktop settings; the split session keeps all. */
+    readonly isMain: boolean;
+  }): Effect.fn.Return<Electron.BrowserWindow, DesktopWindowError> {
     yield* previewManager.getBrowserSession();
     const applicationUrl = getDesktopUrl(environment.isDevelopment);
     const iconPaths = yield* assets.iconPaths;
     const iconOption = getIconOption(iconPaths, environment.platform);
     const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
     const persistedSettings = yield* desktopSettings.get;
-    const persistedBounds = persistedSettings.mainWindowBounds;
+    const persistedBounds =
+      options.state.bounds ?? (options.isMain ? persistedSettings.mainWindowBounds : null);
     const displayBoundsResult = yield* Effect.sync(() => {
       try {
         return {
@@ -361,6 +389,22 @@ export const make = Effect.gen(function* () {
     if (persistedBounds !== null && initialBounds === DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE) {
       yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
     }
+    const rendererWebPreferences: Electron.WebPreferences = {
+      preload: environment.preloadPath,
+      // Chromium throttles hidden renderers: timers coalesce and rAF stops,
+      // which stalls first paint. Boot unthrottled; the first-reveal trigger
+      // re-enables throttling so a hidden or minimized window goes back to
+      // being cheap after it has been shown once.
+      backgroundThrottling: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webviewTag: true,
+      // A preview guest's fullscreen request is mirrored onto this embedder,
+      // which would otherwise put the whole window into OS fullscreen. With
+      // both sides opted out the page fills its webview and the window stays.
+      disableHtmlFullscreenWindowResize: true,
+    };
     const window = yield* electronWindow.create({
       ...initialBounds,
       minWidth: 840,
@@ -371,32 +415,23 @@ export const make = Effect.gen(function* () {
       backgroundColor: getInitialWindowBackgroundColor(shouldUseDarkColors),
       ...iconOption,
       title: environment.displayName,
-      ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
-      webPreferences: {
-        preload: environment.preloadPath,
-        // Chromium throttles hidden renderers: timers coalesce and rAF stops,
-        // which stalls first paint. Boot unthrottled; the first-reveal trigger
-        // re-enables throttling so a hidden or minimized window goes back to
-        // being cheap after it has been shown once.
-        backgroundThrottling: false,
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webviewTag: true,
-        // A preview guest's fullscreen request is mirrored onto this embedder,
-        // which would otherwise put the whole window into OS fullscreen. With
-        // both sides opted out the page fills its webview and the window stays.
-        disableHtmlFullscreenWindowResize: true,
-      },
+      ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform, environment.splitView),
+      // In split view the app runs in pane views and the window's own page is a blank backdrop.
+      webPreferences: environment.splitView
+        ? { contextIsolation: true, nodeIntegration: false, sandbox: true }
+        : rendererWebPreferences,
     });
-
-    yield* rendererHistory.register(window.webContents, { surface: "main" });
+    const paneWebPreferences: Electron.WebPreferences = {
+      ...rendererWebPreferences,
+      additionalArguments: [SPLIT_VIEW_PANE_ARGUMENT],
+    };
     if (environment.platform === "darwin") {
       window.setAutoHideCursor(false);
     }
     let boundsPersistFiber: Fiber.Fiber<void, never> | undefined;
     let pendingBoundsPersistFiber: Fiber.Fiber<void, never> | undefined;
-    let boundsPersistenceEnabled = persistedBounds === null || restoredPersistedBounds;
+    let boundsPersistenceEnabled =
+      options.isMain && (persistedBounds === null || restoredPersistedBounds);
     const readPersistableBounds = (): DesktopAppSettings.DesktopWindowBounds | null => {
       if (window.isDestroyed()) {
         return null;
@@ -435,6 +470,7 @@ export const make = Effect.gen(function* () {
       return pendingBoundsPersistFiber;
     };
     const scheduleBoundsPersist = () => {
+      if (!options.isMain) return;
       if (!boundsPersistenceEnabled) {
         const currentBounds = readPersistableBounds();
         if (
@@ -479,29 +515,31 @@ export const make = Effect.gen(function* () {
         fiber === undefined ? Effect.void : Fiber.join(fiber).pipe(Effect.asVoid),
       ),
     );
-    flushMainWindowBounds = flushBoundsPersist;
+    if (options.isMain) flushMainWindowBounds = flushBoundsPersist;
 
-    yield* previewManager.setMainWindow(window);
-    window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
-      if (
-        typeof params.partition !== "string" ||
-        !previewManager.isBrowserPartition(params.partition)
-      ) {
-        event.preventDefault();
-        return;
-      }
-      webPreferences.sandbox = true;
-      webPreferences.nodeIntegration = false;
-      webPreferences.nodeIntegrationInSubFrames = false;
-      webPreferences.contextIsolation = false;
-      webPreferences.disableHtmlFullscreenWindowResize = true;
-      if (previewPasskeys.bridgeEnabled) {
-        webPreferences.additionalArguments = [
-          ...(webPreferences.additionalArguments ?? []),
-          PASSKEY_BRIDGE_ARGUMENT,
-        ];
-      }
-    });
+    if (options.isMain) yield* previewManager.setMainWindow(window);
+    const installWebviewGuard = (contents: Electron.WebContents) => {
+      contents.on("will-attach-webview", (event, webPreferences, params) => {
+        if (
+          typeof params.partition !== "string" ||
+          !previewManager.isBrowserPartition(params.partition)
+        ) {
+          event.preventDefault();
+          return;
+        }
+        webPreferences.sandbox = true;
+        webPreferences.nodeIntegration = false;
+        webPreferences.nodeIntegrationInSubFrames = false;
+        webPreferences.contextIsolation = false;
+        webPreferences.disableHtmlFullscreenWindowResize = true;
+        if (previewPasskeys.bridgeEnabled) {
+          webPreferences.additionalArguments = [
+            ...(webPreferences.additionalArguments ?? []),
+            PASSKEY_BRIDGE_ARGUMENT,
+          ];
+        }
+      });
+    };
 
     const contextMenuContents = new WeakSet<Electron.WebContents>();
     const installContextMenu = (
@@ -579,33 +617,35 @@ export const make = Effect.gen(function* () {
         installContextMenu(popup, popup.webContents);
       });
     };
-    installContextMenu(window, window.webContents);
-    window.webContents.on("did-attach-webview", (_event, contents) => {
-      installContextMenu(window, contents);
-      void runPromise(previewManager.prepareWebview(contents));
-    });
+    const installNavigation = (rendererContents: Electron.WebContents) => {
+      installContextMenu(window, rendererContents);
+      rendererContents.on("did-attach-webview", (_event, contents) => {
+        installContextMenu(window, contents);
+        void runPromise(previewManager.prepareWebview(contents));
+      });
 
-    window.webContents.setWindowOpenHandler(({ url }) => {
-      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
-        void runPromise(electronShell.openExternal(url));
-      }
-      return { action: "deny" };
-    });
-    window.webContents.on("will-navigate", (event, url) => {
-      if (
-        isSameOriginRendererNavigation({
-          applicationUrl,
-          navigationUrl: url,
-        })
-      ) {
-        return;
-      }
+      rendererContents.setWindowOpenHandler(({ url }) => {
+        if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
+          void runPromise(electronShell.openExternal(url));
+        }
+        return { action: "deny" };
+      });
+      rendererContents.on("will-navigate", (event, url) => {
+        if (
+          isSameOriginRendererNavigation({
+            applicationUrl,
+            navigationUrl: url,
+          })
+        ) {
+          return;
+        }
 
-      event.preventDefault();
-      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
-        void runPromise(electronShell.openExternal(url));
-      }
-    });
+        event.preventDefault();
+        if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
+          void runPromise(electronShell.openExternal(url));
+        }
+      });
+    };
 
     // Electron's windowMenu close role owns CmdOrCtrl+W. Holding the
     // close-terminal shortcut can outlive the terminal that handled its first
@@ -624,7 +664,7 @@ export const make = Effect.gen(function* () {
         ),
       notify: (hint) => {
         if (!window.isDestroyed()) {
-          window.webContents.send(QUIT_SHORTCUT_CHANNEL, hint);
+          activeRenderer(window).send(QUIT_SHORTCUT_CHANNEL, hint);
         }
       },
       // Keep the transparent window focused until the physical shortcut is
@@ -634,17 +674,19 @@ export const make = Effect.gen(function* () {
         void runPromise(electronApp.quit);
       },
     });
-    window.webContents.on("before-input-event", (event, input) => {
-      quitShortcutHandler(event, input);
-      if (input.type !== "keyDown" || !input.isAutoRepeat) return;
-      const modifier = environment.platform === "darwin" ? input.meta : input.control;
-      if (modifier && !input.alt && !input.shift && input.key.toLowerCase() === "w") {
-        event.preventDefault();
-      }
-    });
-    window.webContents.on("input-event", (_event, input) => {
-      if (input.type === "gestureScrollEnd") window.webContents.send(TRACKPAD_SCROLL_END_CHANNEL);
-    });
+    const installInput = (contents: Electron.WebContents) => {
+      contents.on("before-input-event", (event, input) => {
+        quitShortcutHandler(event, input);
+        if (input.type !== "keyDown" || !input.isAutoRepeat) return;
+        const modifier = environment.platform === "darwin" ? input.meta : input.control;
+        if (modifier && !input.alt && !input.shift && input.key.toLowerCase() === "w") {
+          event.preventDefault();
+        }
+      });
+      contents.on("input-event", (_event, input) => {
+        if (input.type === "gestureScrollEnd") contents.send(TRACKPAD_SCROLL_END_CHANNEL);
+      });
+    };
 
     window.on("page-title-updated", (event) => {
       event.preventDefault();
@@ -660,11 +702,15 @@ export const make = Effect.gen(function* () {
 
     if (environment.platform === "darwin") {
       window.on("enter-full-screen", () => {
-        window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, true);
+        for (const contents of allRenderers(window)) {
+          contents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, true);
+        }
       });
       window.on("leave-full-screen", () => {
         syncMacosWindowButtons(window);
-        window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, false);
+        for (const contents of allRenderers(window)) {
+          contents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, false);
+        }
       });
     }
 
@@ -679,12 +725,8 @@ export const make = Effect.gen(function* () {
       developmentLoadRetryFiber = undefined;
       runFork(Fiber.interrupt(retryFiber));
     };
-    const loadApplication = () => {
-      if (window.isDestroyed()) {
-        return;
-      }
-      void window.loadURL(applicationUrl).catch(() => undefined);
-    };
+    // Assigned once the split view exists; the dev-server retry reloads its left half.
+    let loadApplication = () => {};
     const scheduleDevelopmentLoadRetry = () => {
       if (developmentLoadRetryFiber !== undefined || window.isDestroyed()) {
         return undefined;
@@ -711,98 +753,149 @@ export const make = Effect.gen(function* () {
       return retryInMs;
     };
 
-    window.webContents.on("did-finish-load", () => {
-      if (
-        environment.isDevelopment &&
-        !isSameOriginRendererNavigation({
-          applicationUrl,
-          navigationUrl: window.webContents.getURL(),
-        })
-      ) {
-        return;
-      }
-      clearDevelopmentLoadRetry();
-      developmentLoadRetryIndex = 0;
-      window.setTitle(environment.displayName);
-      if (environment.platform === "darwin") syncMacosWindowButtons(window);
-    });
-    window.webContents.on(
-      "did-fail-load",
-      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-        if (!isMainFrame) {
+    const installLoadHandling = (contents: Electron.WebContents) => {
+      contents.on("did-finish-load", () => {
+        if (
+          environment.isDevelopment &&
+          !isSameOriginRendererNavigation({
+            applicationUrl,
+            navigationUrl: contents.getURL(),
+          })
+        ) {
           return;
         }
-        const retryInMs =
-          environment.isDevelopment &&
-          isRetryableDevelopmentRendererLoadFailure({
-            applicationUrl,
-            errorCode,
-            isMainFrame,
-            validatedUrl: validatedURL,
-          })
-            ? scheduleDevelopmentLoadRetry()
-            : undefined;
-        void runPromise(
-          logWindowWarning("main window failed to load", {
-            errorCode,
-            errorDescription,
-            url: validatedURL,
-            ...(retryInMs === undefined ? {} : { retryInMs }),
-          }),
-        );
-      },
-    );
-    window.webContents.on("render-process-gone", (_event, details) => {
-      const recoverable =
-        details.reason === "crashed" ||
-        details.reason === "oom" ||
-        details.reason === "abnormal-exit";
-      // Recovery attempts are bounded so a renderer that dies immediately on
-      // boot cannot reload-loop forever.
-      runFork(
-        Effect.gen(function* () {
-          const now = yield* Clock.currentTimeMillis;
-          rendererRecoveryTimestamps = rendererRecoveryTimestamps.filter(
-            (timestamp) => now - timestamp < RENDERER_RECOVERY_WINDOW_MS,
-          );
-          const shouldRecover =
-            recoverable &&
-            !window.isDestroyed() &&
-            rendererRecoveryTimestamps.length < RENDERER_RECOVERY_MAX_ATTEMPTS;
-          yield* logWindowWarning("main window render process gone", {
-            reason: details.reason,
-            exitCode: details.exitCode,
-            recovering: shouldRecover,
-          });
-          if (!shouldRecover) {
+        clearDevelopmentLoadRetry();
+        developmentLoadRetryIndex = 0;
+        window.setTitle(environment.displayName);
+        if (environment.platform === "darwin") syncMacosWindowButtons(window);
+      });
+      contents.on(
+        "did-fail-load",
+        (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+          if (!isMainFrame) {
             return;
           }
-          rendererRecoveryTimestamps.push(now);
-          yield* Effect.sleep(RENDERER_RECOVERY_RELOAD_DELAY_MS);
-          if (!window.isDestroyed()) {
-            loadApplication();
-          }
-        }),
+          const retryInMs =
+            environment.isDevelopment &&
+            isRetryableDevelopmentRendererLoadFailure({
+              applicationUrl,
+              errorCode,
+              isMainFrame,
+              validatedUrl: validatedURL,
+            })
+              ? scheduleDevelopmentLoadRetry()
+              : undefined;
+          void runPromise(
+            logWindowWarning("main window failed to load", {
+              errorCode,
+              errorDescription,
+              url: validatedURL,
+              ...(retryInMs === undefined ? {} : { retryInMs }),
+            }),
+          );
+        },
       );
-    });
+      contents.on("render-process-gone", (_event, details) => {
+        const recoverable =
+          details.reason === "crashed" ||
+          details.reason === "oom" ||
+          details.reason === "abnormal-exit";
+        // Recovery attempts are bounded so a renderer that dies immediately on
+        // boot cannot reload-loop forever.
+        runFork(
+          Effect.gen(function* () {
+            const now = yield* Clock.currentTimeMillis;
+            rendererRecoveryTimestamps = rendererRecoveryTimestamps.filter(
+              (timestamp) => now - timestamp < RENDERER_RECOVERY_WINDOW_MS,
+            );
+            const shouldRecover =
+              recoverable &&
+              !window.isDestroyed() &&
+              rendererRecoveryTimestamps.length < RENDERER_RECOVERY_MAX_ATTEMPTS;
+            yield* logWindowWarning("main window render process gone", {
+              reason: details.reason,
+              exitCode: details.exitCode,
+              recovering: shouldRecover,
+            });
+            if (!shouldRecover) {
+              return;
+            }
+            rendererRecoveryTimestamps.push(now);
+            yield* Effect.sleep(RENDERER_RECOVERY_RELOAD_DELAY_MS);
+            if (window.isDestroyed() || contents.isDestroyed()) return;
+            // A pane reloads where it was; the single renderer starts over at the app root.
+            if (environment.splitView) contents.reload();
+            else loadApplication();
+          }),
+        );
+      });
+    };
+
+    const installRendererHooks = (contents: Electron.WebContents) => {
+      installWebviewGuard(contents);
+      installNavigation(contents);
+      installInput(contents);
+      installLoadHandling(contents);
+    };
+    const split = environment.splitView
+      ? new SplitView({
+          window,
+          state: options.state,
+          appOrigin: applicationUrl.replace(/\/$/, ""),
+          background: getInitialWindowBackgroundColor(shouldUseDarkColors),
+          chromePreloadPath: environment.path.join(environment.dirname, "split-chrome-preload.cjs"),
+          createPaneView: () => {
+            const view = new Electron.WebContentsView({ webPreferences: paneWebPreferences });
+            runFork(rendererHistory.register(view.webContents, { surface: "main" }));
+            installRendererHooks(view.webContents);
+            return view;
+          },
+          openWindow: (path) => void runPromise(openWindow(path)),
+          onStateChange: () => splitSession.save(),
+        })
+      : null;
+    if (split) {
+      splitSession.add(split, window);
+    } else {
+      yield* rendererHistory.register(window.webContents, { surface: "main" });
+      installRendererHooks(window.webContents);
+    }
+    // The app's first renderer: the left half, or the window's own page.
+    const appContents = split?.leftContents ?? window.webContents;
+    loadApplication = () => {
+      if (window.isDestroyed() || appContents.isDestroyed()) return;
+      void (split ? appContents.loadURL(applicationUrl) : window.loadURL(applicationUrl)).catch(
+        () => undefined,
+      );
+    };
 
     const revealSubscribers: RevealSubscription[] = [(fire) => window.once("ready-to-show", fire)];
     if (environment.platform === "linux") {
-      revealSubscribers.push((fire) => window.webContents.once("did-finish-load", fire));
+      revealSubscribers.push((fire) => appContents.once("did-finish-load", fire));
     }
     bindFirstRevealTrigger(revealSubscribers, () => {
       if (!window.isDestroyed()) {
-        window.webContents.setBackgroundThrottling(true);
+        for (const contents of allRenderers(window)) contents.setBackgroundThrottling(true);
       }
-      if (persistedSettings.mainWindowMaximized) {
+      if (options.state.maximized || (options.isMain && persistedSettings.mainWindowMaximized)) {
         window.maximize();
       }
       void runPromise(Effect.andThen(electronWindow.reveal(window), dismissConnectingSplash));
     });
 
-    loadApplication();
+    if (split) {
+      // The backdrop page lets the window fire ready-to-show; the halves load on top of it.
+      void window
+        .loadURL(
+          `data:text/html,<body style="margin:0;background:${getInitialWindowBackgroundColor(shouldUseDarkColors)}"></body>`,
+        )
+        .catch(() => undefined);
+      split.load(options.initialPath);
+    } else {
+      loadApplication();
+    }
     if (environment.isDevelopment) {
-      window.webContents.openDevTools({ mode: "detach" });
+      appContents.openDevTools({ mode: "detach" });
     }
 
     window.on("closed", () => {
@@ -814,10 +907,44 @@ export const make = Effect.gen(function* () {
     return window;
   });
 
+  /** A further window next to the focused one, pulled back onto its display if it overflows. */
+  const openWindow = Effect.fn("desktop.window.openWindow")(function* (path: string) {
+    const anchor = Electron.BrowserWindow.getFocusedWindow();
+    const state = defaultSplitWindowState();
+    if (anchor && !anchor.isDestroyed()) {
+      const { x, y, width, height } = anchor.getNormalBounds();
+      const next = { x: x + CASCADE_OFFSET, y: y + CASCADE_OFFSET, width, height };
+      const area = Electron.screen.getDisplayMatching(next).workArea;
+      if (next.x + width > area.x + area.width) next.x = area.x;
+      if (next.y + height > area.y + area.height) next.y = area.y;
+      state.bounds = next;
+    }
+    return yield* createWindow({ state, initialPath: path, isMain: false });
+  });
+
+  // Every window of the saved split session comes back; the first is the main one.
   const createMain = Effect.gen(function* () {
-    const window = yield* createWindow();
+    if (!environment.splitView) {
+      const window = yield* createWindow({
+        state: defaultSplitWindowState(),
+        initialPath: null,
+        isMain: true,
+      });
+      yield* electronWindow.setMain(window);
+      yield* logWindowInfo("main window created");
+      return window;
+    }
+    const saved = splitSession.read();
+    const [first = defaultSplitWindowState(), ...rest] = saved.windows;
+    const window = yield* createWindow({ state: first, initialPath: null, isMain: true });
     yield* electronWindow.setMain(window);
-    yield* logWindowInfo("main window created");
+    yield* logWindowInfo("main window created", { windows: saved.windows.length });
+    const others: Electron.BrowserWindow[] = [];
+    for (const state of rest) {
+      others.push(yield* createWindow({ state, initialPath: null, isMain: false }));
+    }
+    const focused = [window, ...others][saved.focusedIndex];
+    if (focused && focused !== window && !focused.isDestroyed()) focused.focus();
     return window;
   }).pipe(Effect.withSpan("desktop.window.createMain"));
 
@@ -901,16 +1028,20 @@ export const make = Effect.gen(function* () {
     if (Option.isNone(existingWindow) && (!reveal || (yield* waitingForBackend))) return;
     const targetWindow = Option.isSome(existingWindow) ? existingWindow.value : yield* ensureMain;
     if (targetWindow.isDestroyed()) return;
+    // The half the user last worked in hears menu actions and snapshots.
+    const targetContents = activeRenderer(targetWindow);
     const send = Effect.sync(() => {
-      if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload);
+      if (!targetWindow.isDestroyed() && !targetContents.isDestroyed()) {
+        targetContents.send(channel, payload);
+      }
     });
     // The renderer must learn about the event even when another process refuses to
     // yield the foreground, so send first and treat the reveal as best effort.
     const dispatch = reveal
       ? send.pipe(Effect.andThen(electronWindow.reveal(targetWindow).pipe(Effect.ignoreCause)))
       : send;
-    if (targetWindow.webContents.isLoadingMainFrame()) {
-      targetWindow.webContents.once("did-finish-load", () => void runPromise(dispatch));
+    if (targetContents.isLoadingMainFrame()) {
+      targetContents.once("did-finish-load", () => void runPromise(dispatch));
       return;
     }
     yield* dispatch;
@@ -974,7 +1105,7 @@ export const make = Effect.gen(function* () {
       if (Option.isNone(window) || window.value.isDestroyed()) {
         return;
       }
-      const webContents = window.value.webContents;
+      const webContents = activeRenderer(window.value);
       webContents.setZoomLevel(
         direction === "reset" ? 0 : webContents.getZoomLevel() + (direction === "in" ? 0.5 : -0.5),
       );
@@ -990,7 +1121,7 @@ export const make = Effect.gen(function* () {
       // focused, Reload would otherwise reload the popup mid sign-in.
       const window = yield* electronWindow.main;
       if (Option.isNone(window) || window.value.isDestroyed()) return;
-      const webContents = window.value.webContents;
+      const webContents = activeRenderer(window.value);
       if (command === "reload") webContents.reload();
       else if (command === "forceReload") webContents.reloadIgnoringCache();
       else webContents.toggleDevTools();
@@ -998,7 +1129,12 @@ export const make = Effect.gen(function* () {
     syncAppearance: Effect.gen(function* () {
       const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
       yield* electronWindow.syncAllAppearance((window) =>
-        syncWindowAppearance(window, shouldUseDarkColors, environment.platform),
+        syncWindowAppearance(
+          window,
+          shouldUseDarkColors,
+          environment.platform,
+          environment.splitView,
+        ),
       );
     }).pipe(Effect.withSpan("desktop.window.syncAppearance")),
   });

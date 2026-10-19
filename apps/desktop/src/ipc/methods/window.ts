@@ -40,6 +40,7 @@ import * as MacPermissions from "../../permissions/MacPermissions.ts";
 import { safariPermissionCheck } from "../../preview/BrowserImport/SafariPermission.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
+import { isAppRendererId, paneById, windowOfContents } from "../../window/RendererContents.ts";
 import {
   extractDistroFromUncPath,
   resolveWslPickFolderDefaultPath,
@@ -263,16 +264,21 @@ export const showContextMenu = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.CONTEXT_MENU_CHANNEL,
   payload: ContextMenuInput,
   result: Schema.NullOr(Schema.String),
-  handler: Effect.fn("desktop.ipc.window.showContextMenu")(function* (input) {
+  handler: Effect.fn("desktop.ipc.window.showContextMenu")(function* (input, event) {
     const electronMenu = yield* ElectronMenu.ElectronMenu;
     const electronWindow = yield* ElectronWindow.ElectronWindow;
-    const window = yield* electronWindow.focusedMainOrFirst;
+    const sender = event ? paneById(event.sender.id) : null;
+    const senderWindow = sender ? windowOfContents(sender) : null;
+    const window = senderWindow
+      ? Option.some(senderWindow)
+      : yield* electronWindow.focusedMainOrFirst;
     if (Option.isNone(window)) {
       return null;
     }
 
     const selectedItemId = yield* electronMenu.showContextMenu({
       window: window.value,
+      ...(sender && senderWindow ? { contents: sender } : {}),
       items: input.items,
       position: Option.fromNullishOr(input.position),
     });
@@ -337,16 +343,12 @@ export const pasteAsText = DesktopIpc.makeIpcMethod({
       event === undefined ||
       Option.isNone(window) ||
       window.value.isDestroyed() ||
-      window.value.webContents.id !== event.sender.id
+      !isAppRendererId(window.value, event.sender.id)
     ) {
       return;
     }
     const focused = Electron.webContents.getFocusedWebContents();
-    if (
-      focused &&
-      !focused.isDestroyed() &&
-      Electron.BrowserWindow.fromWebContents(focused) === window.value
-    ) {
+    if (focused && !focused.isDestroyed() && windowOfContents(focused) === window.value) {
       focused.paste();
     }
   }),

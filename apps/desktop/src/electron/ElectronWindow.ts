@@ -14,6 +14,8 @@ import * as Schema from "effect/Schema";
 
 import * as Electron from "electron";
 
+import { allRenderers } from "../window/RendererContents.ts";
+
 import {
   activateWindowsForeground,
   isWindowsShellHostedForeground,
@@ -331,7 +333,10 @@ export const make = Effect.gen(function* () {
             continue;
           }
           yield* Effect.try({
-            try: () => window.webContents.send(channel, ...args),
+            // Each split view half is a renderer of its own.
+            try: () => {
+              for (const contents of allRenderers(window)) contents.send(channel, ...args);
+            },
             catch: (cause) =>
               new ElectronWindowOperationError({
                 operation: "send-window-message",

@@ -23,6 +23,8 @@ export interface SplitViewHost {
    * reopen the pane on it. Optional, because older shells lack it.
    */
   readonly reportSidebarProfile?: (key: string) => void;
+  /** Tells the shell this pane's thread title, which labels the pane once minimized. Optional. */
+  readonly reportPaneTitle?: (title: string | null) => void;
   readonly isSplit: () => boolean;
   readonly subscribe: (onChange: () => void) => () => void;
 }

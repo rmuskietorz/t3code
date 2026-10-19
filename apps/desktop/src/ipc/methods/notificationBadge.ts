@@ -6,6 +6,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as ElectronApp from "../../electron/ElectronApp.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
 import { SET_NOTIFICATION_BADGE_CHANNEL } from "../channels.ts";
+import { allRenderers } from "../../window/RendererContents.ts";
 
 const NotificationBadge = Schema.Struct({
   count: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 2_147_483_647 })),
@@ -49,7 +50,8 @@ export const installNotificationBadge = Effect.fn("desktop.ipc.installNotificati
     const clear = () => {
       applyNotificationBadge(platform, { count: 0, image: null });
       for (const window of Electron.BrowserWindow.getAllWindows()) {
-        if (!window.isDestroyed()) window.webContents.send(SET_NOTIFICATION_BADGE_CHANNEL);
+        if (window.isDestroyed()) continue;
+        for (const contents of allRenderers(window)) contents.send(SET_NOTIFICATION_BADGE_CHANNEL);
       }
     };
     yield* ipc.handle(

@@ -12,6 +12,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
 import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
+import { SPLIT_VIEW_PANE_ARGUMENT } from "./preview/GuestProtocol.ts";
 
 const SNAP_SHOT_EVENT_TYPES = new Set([
   "requested",
@@ -438,3 +439,70 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     },
   },
 } satisfies DesktopBridge);
+
+// Only split view panes get the host; elsewhere the web app hides its split controls.
+if (process.argv.includes(SPLIT_VIEW_PANE_ARGUMENT)) {
+  // Lets the web app control the split view and open further windows (see
+  // window/SplitView.ts and apps/web/src/splitViewHost.ts).
+  let splitActive = false;
+  const splitListeners = new Set<() => void>();
+  ipcRenderer.on("split:state", (_event, value: unknown) => {
+    splitActive = value === true;
+    for (const listener of splitListeners) listener();
+  });
+
+  contextBridge.exposeInMainWorld("t3SplitView", {
+    toggle: () => ipcRenderer.send("split:toggle"),
+    openInOtherPane: (path: string) => ipcRenderer.send("split:open", String(path)),
+    closeThisPane: () => ipcRenderer.send("split:close"),
+    minimizeThisPane: () => ipcRenderer.send("split:minimize"),
+    openInNewWindow: (path: string) => ipcRenderer.send("window:open", String(path)),
+    reportSidebarProfile: (key: string) => ipcRenderer.send("pane:profile", String(key)),
+    reportPaneTitle: (title: string | null) =>
+      ipcRenderer.send("pane:title", title === null ? null : String(title)),
+    isSplit: () => splitActive,
+    subscribe: (listener: () => void) => {
+      splitListeners.add(listener);
+      return () => {
+        splitListeners.delete(listener);
+      };
+    },
+  });
+
+  // The sidebar profile lives in this page's sessionStorage, which Electron drops
+  // with the pane. The split view saves it per half and hands it back here, so a
+  // restored half opens on its own profile (see apps/web/src/sidebarProfile.ts).
+  const SIDEBAR_PROFILE_KEY = "t3code:sidebar-profile:v1";
+  const LAST_SIDEBAR_PROFILE_KEY = "t3code:sidebar-profile-last:v1";
+
+  function readStorage(storage: () => Storage, key: string): string | null {
+    try {
+      return storage().getItem(key);
+    } catch (error) {
+      // @effect-diagnostics-next-line globalConsole:off -- The sandboxed preload has no Effect runtime.
+      console.warn(`Could not read ${key}`, error);
+      return null;
+    }
+  }
+
+  // A half that never picked a profile shows the last one picked anywhere, which
+  // the web app does not copy into this storage. Pin it here, or a later pick in
+  // another window would change this one after a restart.
+  const initialSidebarProfile: unknown =
+    ipcRenderer.sendSync("pane:profile-initial") ??
+    readStorage(() => window.localStorage, LAST_SIDEBAR_PROFILE_KEY);
+  if (
+    typeof initialSidebarProfile === "string" &&
+    readStorage(() => window.sessionStorage, SIDEBAR_PROFILE_KEY) === null
+  ) {
+    try {
+      window.sessionStorage.setItem(SIDEBAR_PROFILE_KEY, initialSidebarProfile);
+    } catch (error) {
+      // @effect-diagnostics-next-line globalConsole:off -- The sandboxed preload has no Effect runtime.
+      console.warn("Could not restore the sidebar profile", error);
+    }
+  }
+  // Later picks arrive through reportSidebarProfile as they happen.
+  const currentSidebarProfile = readStorage(() => window.sessionStorage, SIDEBAR_PROFILE_KEY);
+  if (currentSidebarProfile !== null) ipcRenderer.send("pane:profile", currentSidebarProfile);
+}

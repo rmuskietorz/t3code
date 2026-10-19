@@ -14,6 +14,7 @@ import * as Schema from "effect/Schema";
 
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { SSH_PASSWORD_PROMPT_CHANNEL } from "../ipc/channels.ts";
+import { activeRenderer } from "../window/RendererContents.ts";
 
 const DEFAULT_SSH_PASSWORD_PROMPT_TIMEOUT_MS = 3 * 60 * 1000;
 
@@ -423,7 +424,7 @@ export const make = Effect.fn("desktop.sshPasswordPrompts.make")(function* (
       );
       return yield* Effect.gen(function* () {
         yield* runPresentationOperation("send-prompt-request", () =>
-          window.value.webContents.send(SSH_PASSWORD_PROMPT_CHANNEL, promptRequest),
+          activeRenderer(window.value).send(SSH_PASSWORD_PROMPT_CHANNEL, promptRequest),
         );
         yield* Effect.yieldNow;
         const unavailableAfterSend = yield* runPresentationOperation(

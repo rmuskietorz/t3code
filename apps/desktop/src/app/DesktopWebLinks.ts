@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { WEB_LINK_OPEN_CHANNEL } from "../ipc/channels.ts";
+import { activeRenderer } from "../window/RendererContents.ts";
 
 export const isWebLink = (value: string) => {
   if (!URL.canParse(value)) return false;
@@ -37,7 +38,7 @@ const make = Effect.gen(function* () {
   const flush = Effect.gen(function* () {
     if (listening === null || pending.length === 0) return;
     const window = yield* electronWindow.currentMainOrFirst;
-    if (Option.isNone(window) || window.value.webContents !== listening) return;
+    if (Option.isNone(window) || activeRenderer(window.value) !== listening) return;
     if (listening.isDestroyed()) {
       stopListening();
       return;
@@ -48,8 +49,10 @@ const make = Effect.gen(function* () {
 
   const startListening = Effect.gen(function* () {
     const window = yield* electronWindow.currentMainOrFirst;
-    if (Option.isNone(window) || window.value.webContents.isDestroyed()) return;
-    const webContents = window.value.webContents;
+    if (Option.isNone(window)) return;
+    // Links open in the half the user last worked in.
+    const webContents = activeRenderer(window.value);
+    if (webContents.isDestroyed()) return;
     if (listening === webContents) return;
     stopListening();
     listening = webContents;

@@ -84,6 +84,7 @@ import {
 import { isPreviewAnnotationPayload } from "./PickedElementPayload.ts";
 import { captureFavicon, safeHttpOrigin, selectFaviconCandidates } from "./FaviconCapture.ts";
 import { DEFAULT_RECORDING_INPUT_OPTIONS, type RecordingInputOptions } from "./RecordingInput.ts";
+import { isPane } from "../window/RendererContents.ts";
 
 export type PreviewNavStatus =
   | { kind: "Idle" }
@@ -1789,7 +1790,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       !wc ||
       wc.isDestroyed() ||
       wc.getType() !== "webview" ||
-      (Option.isSome(mainWindow) && wc.hostWebContents !== mainWindow.value.webContents)
+      // Any split view half may host the webview, in any app window.
+      (Option.isSome(mainWindow) &&
+        wc.hostWebContents !== mainWindow.value.webContents &&
+        (wc.hostWebContents === null || !isPane(wc.hostWebContents)))
     ) {
       return yield* new PreviewWebContentsNotFoundError({ tabId, webContentsId });
     }

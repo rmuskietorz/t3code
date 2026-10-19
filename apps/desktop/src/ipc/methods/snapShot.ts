@@ -21,6 +21,7 @@ import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as DesktopSnapShot from "../../snapShot/DesktopSnapShot.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
+import { isAppRendererId, paneById, viewportOffset } from "../../window/RendererContents.ts";
 
 class SnapShotIpcUnauthorizedSenderError extends Schema.TaggedError<SnapShotIpcUnauthorizedSenderError>()(
   "SnapShotIpcUnauthorizedSenderError",
@@ -37,7 +38,7 @@ const ensureTrustedSnapShotSender = Effect.fn("desktop.ipc.snapShot.ensureTruste
     if (
       event === undefined ||
       Option.isNone(main) ||
-      main.value.webContents.id !== event.sender.id
+      !isAppRendererId(main.value, event.sender.id)
     ) {
       return yield* new SnapShotIpcUnauthorizedSenderError();
     }
@@ -196,22 +197,24 @@ export const setSnapShotAnimationDestination = DesktopIpc.makeIpcMethod({
       ) {
         return;
       }
+      // A split view half reports its frame in its own viewport, which may
+      // start past the left half; the animation needs window coordinates.
+      const contents = (event ? paneById(event.sender.id) : null) ?? window.webContents;
+      const zoom = contents.getZoomFactor();
+      const offset = viewportOffset(contents);
+      const viewportFrame = {
+        ...destination.viewportFrame,
+        x: destination.viewportFrame.x + offset.x / zoom,
+        y: destination.viewportFrame.y + offset.y / zoom,
+      };
       yield* (yield* DesktopSnapShot.DesktopSnapShot).setAnimationDestination(destination.id, {
-        relativeFrame: snapShotRelativeFrame(
-          destination.viewportFrame,
-          window.getContentBounds(),
-          window.webContents.getZoomFactor(),
-        ),
-        frame: snapShotScreenFrame(
-          destination.viewportFrame,
-          window.getContentBounds(),
-          window.webContents.getZoomFactor(),
-        ),
+        relativeFrame: snapShotRelativeFrame(viewportFrame, window.getContentBounds(), zoom),
+        frame: snapShotScreenFrame(viewportFrame, window.getContentBounds(), zoom),
         backgroundColor: destination.backgroundColor,
         borderColor: destination.borderColor,
-        borderWidth: destination.borderWidth * window.webContents.getZoomFactor(),
-        cornerRadius: destination.cornerRadius * window.webContents.getZoomFactor(),
-        scaleFactor: window.webContents.getZoomFactor(),
+        borderWidth: destination.borderWidth * zoom,
+        cornerRadius: destination.cornerRadius * zoom,
+        scaleFactor: zoom,
         details: destination.details,
       });
     },

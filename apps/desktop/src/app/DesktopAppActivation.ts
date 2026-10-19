@@ -26,6 +26,7 @@ import type * as Electron from "electron";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { DESKTOP_APP_ACTIVATION_REQUEST_CHANNEL } from "../ipc/channels.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
+import { activeRenderer } from "../window/RendererContents.ts";
 import { DesktopAppActivationBroker } from "./DesktopAppActivationBroker.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import { makeComponentLogger } from "./DesktopObservability.ts";
@@ -362,7 +363,7 @@ export const make = Effect.gen(function* () {
       }
       const main = yield* electronWindow.main;
       if (Option.isNone(main)) return;
-      const webContents = main.value.webContents;
+      const webContents = activeRenderer(main.value);
       if (webContents.isDestroyed()) return;
 
       if (registeredWebContents !== webContents) {
