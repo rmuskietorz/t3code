@@ -6,6 +6,7 @@ import {
   type AuthEnvironmentScope,
 } from "./auth.ts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -273,12 +274,27 @@ const QuitConfirmationModeSetting = Schema.Union([QuitConfirmationMode, LegacyCo
 export const SidebarCustomProjectGroupId = TrimmedNonEmptyString.check(Schema.isMaxLength(64));
 export type SidebarCustomProjectGroupId = typeof SidebarCustomProjectGroupId.Type;
 
+/** "inherit" follows the global sidebar project sort order. */
+export const SidebarCustomProjectGroupSortOrder = Schema.Literals([
+  "inherit",
+  "manual",
+  "name",
+  "updated_at",
+]);
+export type SidebarCustomProjectGroupSortOrder = typeof SidebarCustomProjectGroupSortOrder.Type;
+
 export const SidebarCustomProjectGroup = Schema.Struct({
   id: SidebarCustomProjectGroupId,
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(80)),
   /** Path globs that place a project here when it has no manual assignment. */
   pathRules: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(512))).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  /** Absent means "inherit"; an unknown value from a newer client also falls back to it. */
+  projectSortOrder: Schema.optionalKey(
+    SidebarCustomProjectGroupSortOrder.pipe(
+      Schema.catchDecoding(() => Effect.succeed(Option.some("inherit" as const))),
+    ),
   ),
 });
 export type SidebarCustomProjectGroup = typeof SidebarCustomProjectGroup.Type;

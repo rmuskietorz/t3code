@@ -94,6 +94,7 @@ import {
 import { useScopedModelDisabledReason } from "./useScopedModelAvailability";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { CustomProjectGroupsSettings } from "./CustomProjectGroupsSettings";
+import { SIDEBAR_PROJECT_SORT_ORDER_LABELS } from "../sidebar/customProjectGroupSort";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
@@ -195,11 +196,6 @@ const RESPONSE_STREAMING_MODE_DESCRIPTIONS: Record<ResponseStreamingMode, string
   paragraph: "Each paragraph or code block appears as soon as it is complete.",
 };
 
-const SIDEBAR_PROJECT_SORT_ORDER_LABELS: Record<SidebarProjectSortOrder, string> = {
-  updated_at: "Last user message",
-  created_at: "Created at",
-  manual: "Manual",
-};
 const isSidebarProjectSortOrder = Schema.is(SidebarProjectSortOrder);
 
 const TIMESTAMP_FORMAT_LABELS = {

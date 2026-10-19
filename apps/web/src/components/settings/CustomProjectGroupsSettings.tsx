@@ -1,4 +1,9 @@
-import type { SidebarCustomProjectGroup } from "@t3tools/contracts/settings";
+import {
+  SidebarCustomProjectGroupSortOrder,
+  type SidebarCustomProjectGroup,
+  type SidebarProjectSortOrder,
+} from "@t3tools/contracts/settings";
+import * as Schema from "effect/Schema";
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
@@ -10,6 +15,8 @@ import {
 import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { customProjectGroupSortOrderOptions } from "../sidebar/customProjectGroupSort";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { SettingsRow } from "./settingsLayout";
@@ -43,10 +50,44 @@ function PathRulesInput({ group }: { group: SidebarCustomProjectGroup }) {
   );
 }
 
+const isGroupSortOrder = Schema.is(SidebarCustomProjectGroupSortOrder);
+
+function GroupSortOrderSelect({
+  group,
+  globalSortOrder,
+}: {
+  group: SidebarCustomProjectGroup;
+  globalSortOrder: SidebarProjectSortOrder;
+}) {
+  const actions = useCustomProjectGroupActions();
+  const options = customProjectGroupSortOrderOptions(globalSortOrder);
+  const current = group.projectSortOrder ?? "inherit";
+  return (
+    <Select
+      value={current}
+      onValueChange={(value) => {
+        if (isGroupSortOrder(value)) void actions.setProjectSortOrder(group.id, value);
+      }}
+    >
+      <SelectTrigger size="sm" className="w-44" aria-label={`Project order in ${group.name}`}>
+        <SelectValue>{options.find((option) => option.value === current)?.label}</SelectValue>
+      </SelectTrigger>
+      <SelectPopup align="end" alignItemWithTrigger={false}>
+        {options.map((option) => (
+          <SelectItem hideIndicator key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
+}
+
 export function CustomProjectGroupsSettings() {
   const enabled = useCustomProjectGroupsEnabled();
   const groups = useCustomProjectGroups();
   const legacySidebarEnabled = useClientSettings((settings) => settings.legacySidebarEnabled);
+  const globalSortOrder = useClientSettings((settings) => settings.sidebarProjectSortOrder);
   const updateSettings = useUpdateClientSettings();
   const actions = useCustomProjectGroupActions();
 
@@ -88,6 +129,7 @@ export function CustomProjectGroupsSettings() {
               description="Projects matching a rule join this group unless you moved them yourself. One rule per line; * matches within a folder, ** across folders."
               control={
                 <div className="flex items-center gap-1">
+                  <GroupSortOrderSelect group={group} globalSortOrder={globalSortOrder} />
                   <Button
                     size="icon-sm"
                     variant="ghost"

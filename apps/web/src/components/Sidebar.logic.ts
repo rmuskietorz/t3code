@@ -26,6 +26,11 @@ import type { SidebarThreadSummary, Thread } from "../types";
 import { cn, normalizeSearchText } from "../lib/utils";
 import { isLatestRunSettled } from "../session-logic";
 import { resolveServerBackedAppStageLabel } from "../branding.logic";
+import { legacyProjectCwdPreferenceKey } from "../uiStateStore";
+import type {
+  CustomProjectGroupItemSortOrder,
+  CustomProjectGroupMember,
+} from "@t3tools/client-runtime/state/custom-project-groups";
 
 export function shouldNavigateAfterThreadPark(input: {
   readonly threadKey: string;
@@ -1352,4 +1357,44 @@ export function sortScopedProjectsForSidebar<
       left.environmentId.localeCompare(right.environmentId) ||
       left.id.localeCompare(right.id),
   );
+}
+
+/**
+ * Sorts the rows of one custom project group by the group's own order. Manual
+ * uses the same stored project order as the global manual sort, and activity
+ * defers to the caller's sidebar sort so both orderings stay identical.
+ */
+export function sortCustomProjectGroupItems<
+  TProject extends {
+    readonly projectKey: string;
+    readonly displayName: string;
+    readonly memberProjects: ReadonlyArray<CustomProjectGroupMember>;
+  },
+>(input: {
+  readonly items: readonly TProject[];
+  readonly sortOrder: CustomProjectGroupItemSortOrder;
+  readonly projectOrder: readonly string[];
+  readonly sortByActivity: (items: readonly TProject[]) => readonly TProject[];
+}): readonly TProject[] {
+  switch (input.sortOrder) {
+    case "name":
+      return input.items.toSorted(
+        (left, right) =>
+          left.displayName.localeCompare(right.displayName, undefined, { sensitivity: "base" }) ||
+          left.projectKey.localeCompare(right.projectKey),
+      );
+    case "manual":
+      return orderItemsByPreferredIds({
+        items: input.items,
+        preferredIds: input.projectOrder,
+        getId: (project) => project.projectKey,
+        getPreferenceIds: (project) =>
+          project.memberProjects.flatMap((member) => [
+            member.physicalProjectKey,
+            legacyProjectCwdPreferenceKey(member.workspaceRoot),
+          ]),
+      });
+    case "updated_at":
+      return input.sortByActivity(input.items);
+  }
 }

@@ -6,6 +6,7 @@ import {
 import type {
   SidebarCustomProjectGroup,
   SidebarCustomProjectGroupId,
+  SidebarCustomProjectGroupSortOrder,
 } from "@t3tools/contracts/settings";
 import { useMemo } from "react";
 
@@ -50,6 +51,10 @@ export function useCustomProjectGroupActions() {
         updateGroup(groupId, (group) => ({ ...group, name })),
       setPathRules: (groupId: SidebarCustomProjectGroupId, pathRules: ReadonlyArray<string>) =>
         updateGroup(groupId, (group) => ({ ...group, pathRules })),
+      setProjectSortOrder: (
+        groupId: SidebarCustomProjectGroupId,
+        projectSortOrder: SidebarCustomProjectGroupSortOrder,
+      ) => updateGroup(groupId, (group) => ({ ...group, projectSortOrder })),
       deleteGroup: (groupId: SidebarCustomProjectGroupId) =>
         updateSettings(deleteCustomProjectGroup(getClientSettings(), groupId)),
       moveGroup: (

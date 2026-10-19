@@ -2,6 +2,8 @@ import type {
   ClientSettings,
   SidebarCustomProjectGroup,
   SidebarCustomProjectGroupId,
+  SidebarCustomProjectGroupSortOrder,
+  SidebarProjectSortOrder,
 } from "@t3tools/contracts/settings";
 import { isUncPath, isWindowsDrivePath } from "@t3tools/shared/path";
 
@@ -136,6 +138,39 @@ export function partitionIntoCustomProjectGroups<Item>(
   }
   sections.push({ group: null, items: itemsByGroup.get(null) ?? [] });
   return sections;
+}
+
+export type CustomProjectGroupItemSortOrder = Exclude<
+  SidebarCustomProjectGroupSortOrder,
+  "inherit"
+>;
+
+/** The order a section's rows actually follow; "Ungrouped" always follows the global order. */
+export function resolveCustomProjectGroupSortOrder(
+  group: SidebarCustomProjectGroup | null,
+  globalSortOrder: SidebarProjectSortOrder,
+): SidebarProjectSortOrder | CustomProjectGroupItemSortOrder {
+  const own = group?.projectSortOrder ?? "inherit";
+  return own === "inherit" ? globalSortOrder : own;
+}
+
+/**
+ * Re-sorts the rows of groups with their own sort order. Inheriting groups and
+ * "Ungrouped" keep the globally sorted order they were partitioned in.
+ */
+export function sortCustomProjectGroupSections<Item>(
+  sections: ReadonlyArray<CustomProjectGroupSection<Item>>,
+  sortItems: (
+    items: ReadonlyArray<Item>,
+    sortOrder: CustomProjectGroupItemSortOrder,
+  ) => ReadonlyArray<Item>,
+): ReadonlyArray<CustomProjectGroupSection<Item>> {
+  return sections.map((section) => {
+    const sortOrder = section.group?.projectSortOrder ?? "inherit";
+    return sortOrder === "inherit" || section.items.length < 2
+      ? section
+      : { group: section.group, items: sortItems(section.items, sortOrder) };
+  });
 }
 
 /**

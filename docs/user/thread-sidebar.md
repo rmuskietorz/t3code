@@ -135,13 +135,15 @@ Windows paths such as `C:\Users\me\projects\**`.
 To place a project yourself, choose **Move to group** in its menu. A project you placed stays there
 even when a rule would put it elsewhere; **Use path rules** in the same menu hands it back to the
 rules. Projects that belong nowhere count as **Ungrouped**. Each device keeps its own groups.
+To order one group differently, right-click its heading and choose **Sort projects**, or pick an
+order next to the group in settings; **Sidebar default** follows the sidebar's project order.
 
 - **Sidebar:** the project filter lists projects under their groups. Pick a group to see the
   threads of all its projects, or choose **Filter by group** in a thread's menu. Right-click a
   project in the filter to move it. If the filtered group is deleted or loses its last project,
   the sidebar returns to all projects and says why.
-- **Legacy sidebar:** projects appear under collapsible group headings. While projects are sorted
-  manually, drag a project onto a group to move it, and drag a heading to reorder groups.
+- **Legacy sidebar:** projects appear under collapsible group headings. While projects or a group are
+  sorted manually, drag a project onto a group to move it, and drag a heading to reorder groups.
 
 The **Collapse or expand all** button collapses or expands the Working, Snoozed, and Settled
 sections. In the legacy sidebar it collapses or expands every project, shows every thread or only
