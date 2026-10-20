@@ -21,21 +21,15 @@ export function StatusLineBar({
 }
 
 /**
- * One line under the composer with what the next turn runs on: branch, model,
- * effort, context use, then the provider's usage limits.
+ * One line under the composer with what the next turn runs on: branch, context
+ * use, then the provider's usage limits.
  */
 export const ComposerStatusLine = memo(function ComposerStatusLine({
   branch,
-  modelName,
-  modelColor,
-  effort,
   contextWindow,
   usageLimits,
 }: {
   readonly branch: string | null;
-  readonly modelName: string | null;
-  readonly modelColor: string;
-  readonly effort: string | null;
   readonly contextWindow: ContextWindowSnapshot | null;
   readonly usageLimits: ReactNode;
 }) {
@@ -46,19 +40,6 @@ export const ComposerStatusLine = memo(function ComposerStatusLine({
       key: "branch",
       node: <span className="min-w-0 truncate text-foreground/80">{branch}</span>,
     });
-  }
-  if (modelName) {
-    segments.push({
-      key: "model",
-      node: (
-        <span className="shrink-0 font-medium" style={{ color: modelColor }}>
-          {modelName}
-        </span>
-      ),
-    });
-  }
-  if (effort) {
-    segments.push({ key: "effort", node: <span className="shrink-0">{effort}</span> });
   }
   if (contextPercent !== null) {
     const rounded = Math.round(contextPercent);
@@ -81,7 +62,7 @@ export const ComposerStatusLine = memo(function ComposerStatusLine({
   }
   if (segments.length === 0 && !usageLimits) return null;
   return (
-    <div className="flex min-w-0 items-center justify-center gap-2 px-1 pt-1 text-muted-foreground text-xs whitespace-nowrap tabular-nums">
+    <div className="flex min-w-0 items-center justify-center gap-2 px-1 text-muted-foreground text-xs whitespace-nowrap tabular-nums">
       {segments.map(({ key, node }, index) => (
         <Fragment key={key}>
           {index > 0 ? (

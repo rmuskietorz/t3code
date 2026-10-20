@@ -277,7 +277,6 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useDebouncedValue } from "~/state/queries";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { ComposerUsageLimitsIndicator } from "./ComposerUsageLimits";
-import { barColor } from "../usage/UsageLimits";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import {
   type ComposerCommandItem,
@@ -2323,10 +2322,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       : (normalizeModelSlug(selectedModelForPicker, selectedProvider) ?? selectedModelForPicker);
   }, [modelOptionsByInstance, selectedInstanceId, selectedModelForPicker, selectedProvider]);
 
-  const selectedModelDisplayName = useMemo(
-    () => resolveContextWindowModelDisplayName(selectedModelSelection, modelOptionsByInstance),
-    [selectedModelSelection, modelOptionsByInstance],
-  );
   const activeThreadModelDisplayName = useMemo(
     () => resolveContextWindowModelDisplayName(activeThreadModelSelection, modelOptionsByInstance),
     [activeThreadModelSelection, modelOptionsByInstance],
@@ -7366,9 +7361,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       </div>
       <ComposerStatusLine
         branch={props.gitBranch}
-        modelName={selectedModelDisplayName}
-        modelColor={barColor(selectedProvider)}
-        effort={selectedPromptEffort}
         contextWindow={activeContextWindow}
         usageLimits={
           props.usageLimitsIndicator ? (
