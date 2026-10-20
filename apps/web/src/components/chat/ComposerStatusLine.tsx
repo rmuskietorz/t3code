@@ -27,18 +27,23 @@ export function StatusLineBar({
  */
 export const ComposerStatusLine = memo(function ComposerStatusLine({
   branch,
+  branchControl,
   contextWindow,
   usageLimits,
   placement,
 }: {
   readonly branch: string | null;
+  /** Replaces the branch label with a picker where switching is possible. */
+  readonly branchControl: ReactNode;
   readonly contextWindow: ContextWindowSnapshot | null;
   readonly usageLimits: ReactNode;
   readonly placement: "card" | "strip";
 }) {
   const contextPercent = contextWindow?.usedPercentage ?? null;
   const segments: { readonly key: string; readonly node: ReactNode }[] = [];
-  if (branch) {
+  if (branchControl) {
+    segments.push({ key: "branch", node: branchControl });
+  } else if (branch) {
     segments.push({
       key: "branch",
       node: <span className="min-w-0 truncate text-foreground/80">{branch}</span>,

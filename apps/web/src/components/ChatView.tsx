@@ -303,6 +303,7 @@ import { DeviceSetup } from "./device/DeviceSetup";
 import { Dialog } from "./ui/dialog";
 import { WizardPopup } from "./ui/wizard";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
+import { BranchToolbarBranchSelector } from "./BranchToolbarBranchSelector";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { isEditableFocused } from "../lib/editableFocus";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
@@ -10485,6 +10486,54 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
+  const onStartFromOriginChangeStable = useStableCallback(onStartFromOriginChange);
+  const forceNewWorktree = multipleModelSelections !== null;
+  // The status line's branch switches like the context strip's picker; while that strip shows, it stays a label.
+  const statusLineBranchControl = useMemo(
+    () =>
+      activeThread && isGitRepo && !showComposerContextStrip ? (
+        <BranchToolbarBranchSelector
+          forceNewWorktree={forceNewWorktree}
+          className="min-w-0"
+          environmentId={activeThread.environmentId}
+          threadId={activeThread.id}
+          {...(routeKind === "draft" && draftId ? { draftId } : {})}
+          envLocked={envLocked}
+          effectiveEnvModeOverride={forceNewWorktree ? "worktree" : envMode}
+          {...(canOverrideServerThreadEnvMode
+            ? {
+                activeThreadBranchOverride: activeThreadBranch,
+                onActiveThreadBranchOverrideChange: setPendingServerThreadBranch,
+              }
+            : {})}
+          startFromOrigin={startFromOrigin}
+          onStartFromOriginChange={onStartFromOriginChangeStable}
+          {...(canCheckoutPullRequestIntoThread
+            ? { onCheckoutPullRequestRequest: openPullRequestDialogStable }
+            : {})}
+          onComposerFocusRequest={scheduleComposerFocusStable}
+        />
+      ) : null,
+    [
+      activeThread,
+      activeThreadBranch,
+      canCheckoutPullRequestIntoThread,
+      canOverrideServerThreadEnvMode,
+      draftId,
+      envLocked,
+      envMode,
+      forceNewWorktree,
+      isGitRepo,
+      onStartFromOriginChangeStable,
+      openPullRequestDialogStable,
+      routeKind,
+      scheduleComposerFocusStable,
+      setPendingServerThreadBranch,
+      showComposerContextStrip,
+      startFromOrigin,
+    ],
+  );
+
   const onExpandTimelineImage = (preview: ExpandedImagePreview) => {
     setExpandedImage(preview);
   };
@@ -11267,6 +11316,7 @@ export default function ChatView(props: ChatViewProps) {
                               gitBranch={
                                 gitStatusQuery.data?.refName ?? activeThread?.branch ?? null
                               }
+                              branchControl={statusLineBranchControl}
                               usageLimitsOpen={usageLimitsBanner !== null}
                               onToggleUsageLimits={toggleUsageLimitsStable}
                               environmentUnavailable={activeEnvironmentUnavailableState}

@@ -1525,6 +1525,7 @@ export interface ChatComposerProps {
   onUsageLimitsCommand?: (() => void) | undefined;
   usageLimitsIndicator: UsageLimitsIndicator | null;
   gitBranch: string | null;
+  branchControl: React.ReactNode;
   usageLimitsOpen: boolean;
   onToggleUsageLimits: () => void;
   environmentUnavailable: {
@@ -4852,6 +4853,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     Boolean(restingControlsHost?.closest("[data-composer-model-strip]"));
   const statusLineProps = {
     branch: props.gitBranch,
+    branchControl: props.branchControl,
     contextWindow: activeContextWindow,
     usageLimits: props.usageLimitsIndicator ? (
       <ComposerUsageLimitsIndicator
