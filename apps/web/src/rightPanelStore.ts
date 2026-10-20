@@ -1087,14 +1087,23 @@ export function adoptRightPanelStateFromStorage(
   current: Pick<RightPanelStoreState, "byThreadKey" | "threadPanelVisibilityByThreadKey">,
   newValue: string,
 ): Pick<RightPanelStoreState, "byThreadKey" | "threadPanelVisibilityByThreadKey"> | null {
-  let persisted: unknown;
+  let persisted: {
+    state?: Partial<Pick<RightPanelStoreState, "byThreadKey" | "threadPanelVisibilityByThreadKey">>;
+    version?: number;
+  };
   try {
-    persisted = (JSON.parse(newValue) as { state?: unknown }).state;
+    persisted = JSON.parse(newValue) as typeof persisted;
   } catch (error) {
     console.warn("Ignoring unreadable right panel state written by another window", error);
     return null;
   }
-  const next = migratePersistedRightPanelState(persisted);
+  // Not migrated: migration closes panels without tabs, which restores a restart
+  // sensibly but would shut a panel another window has just opened.
+  if (persisted.version !== RIGHT_PANEL_STORAGE_VERSION || !persisted.state) return null;
+  const next = {
+    byThreadKey: persisted.state.byThreadKey ?? {},
+    threadPanelVisibilityByThreadKey: persisted.state.threadPanelVisibilityByThreadKey ?? {},
+  };
   return {
     byThreadKey: {
       ...Object.fromEntries(

@@ -1350,6 +1350,24 @@ describe("adoptRightPanelStateFromStorage", () => {
     expect(next?.byThreadKey[keyB]?.activeSurfaceId).toBe("diff");
   });
 
+  it("keeps a panel another window just opened without a tab open", () => {
+    const emptyOpen = { isOpen: true, activeSurfaceId: null, surfaces: [] };
+    const next = adoptRightPanelStateFromStorage(
+      { byThreadKey: {}, threadPanelVisibilityByThreadKey: {} },
+      JSON.stringify({ state: { byThreadKey: { [keyA]: emptyOpen } }, version: 14 }),
+    );
+    expect(next?.byThreadKey[keyA]?.isOpen).toBe(true);
+  });
+
+  it("ignores a write from another version", () => {
+    expect(
+      adoptRightPanelStateFromStorage(
+        { byThreadKey: {}, threadPanelVisibilityByThreadKey: {} },
+        JSON.stringify({ state: { byThreadKey: { [keyA]: diffPanel } }, version: 13 }),
+      ),
+    ).toBeNull();
+  });
+
   it("keeps this window's unpersisted pull requests panel and open popovers", () => {
     const pullRequestsKey = "pull-requests-panel:pull-requests-panel";
     const next = adoptRightPanelStateFromStorage(
