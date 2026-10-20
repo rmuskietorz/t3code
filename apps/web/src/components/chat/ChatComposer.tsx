@@ -277,6 +277,7 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useDebouncedValue } from "~/state/queries";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { ComposerUsageLimitsIndicator } from "./ComposerUsageLimits";
+import { barColor } from "../usage/UsageLimits";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import {
   type ComposerCommandItem,
@@ -312,6 +313,7 @@ import {
   renderProviderTraitsMenuContent,
   renderProviderTraitsPicker,
 } from "./composerProviderState";
+import { ComposerStatusLine } from "./ComposerStatusLine";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import {
   providerSupportsManualCompaction,
@@ -1523,6 +1525,7 @@ export interface ChatComposerProps {
   onToggleKeepFullHistory: () => void;
   onUsageLimitsCommand?: (() => void) | undefined;
   usageLimitsIndicator: UsageLimitsIndicator | null;
+  gitBranch: string | null;
   usageLimitsOpen: boolean;
   onToggleUsageLimits: () => void;
   environmentUnavailable: {
@@ -2320,6 +2323,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       : (normalizeModelSlug(selectedModelForPicker, selectedProvider) ?? selectedModelForPicker);
   }, [modelOptionsByInstance, selectedInstanceId, selectedModelForPicker, selectedProvider]);
 
+  const selectedModelDisplayName = useMemo(
+    () => resolveContextWindowModelDisplayName(selectedModelSelection, modelOptionsByInstance),
+    [selectedModelSelection, modelOptionsByInstance],
+  );
   const activeThreadModelDisplayName = useMemo(
     () => resolveContextWindowModelDisplayName(activeThreadModelSelection, modelOptionsByInstance),
     [activeThreadModelSelection, modelOptionsByInstance],
@@ -7357,15 +7364,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           </div>
         </ComposerSurface.Main>
       </div>
-      {props.usageLimitsIndicator ? (
-        <div className="flex justify-end px-1 pt-1">
-          <ComposerUsageLimitsIndicator
-            indicator={props.usageLimitsIndicator}
-            open={props.usageLimitsOpen}
-            onToggle={props.onToggleUsageLimits}
-          />
-        </div>
-      ) : null}
+      <ComposerStatusLine
+        branch={props.gitBranch}
+        modelName={selectedModelDisplayName}
+        modelColor={barColor(selectedProvider)}
+        effort={selectedPromptEffort}
+        contextWindow={activeContextWindow}
+        usageLimits={
+          props.usageLimitsIndicator ? (
+            <ComposerUsageLimitsIndicator
+              indicator={props.usageLimitsIndicator}
+              open={props.usageLimitsOpen}
+              onToggle={props.onToggleUsageLimits}
+            />
+          ) : null
+        }
+      />
     </form>
   );
 });

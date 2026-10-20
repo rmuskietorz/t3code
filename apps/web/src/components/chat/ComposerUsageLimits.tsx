@@ -20,6 +20,7 @@ import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { barColor, LimitWindows, ResetCredits } from "../usage/UsageLimits";
 import { ComposerBanner } from "./ComposerBanner";
+import { StatusLineBar } from "./ComposerStatusLine";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 
 function accountLabel(account: UsageLimitsReport["accounts"][number]): string {
@@ -178,7 +179,7 @@ function UsageLimitsIndicatorDetails({
   );
 }
 
-/** A status line under the composer: label, used bar, used share and time to reset per window. */
+/** The usage limits segment of the composer status line: label, used bar, used share and time to reset per window. */
 export const ComposerUsageLimitsIndicator = memo(function ComposerUsageLimitsIndicator({
   indicator,
   open,
@@ -221,15 +222,7 @@ export const ComposerUsageLimitsIndicator = memo(function ComposerUsageLimitsInd
               <span key={window.id} className="flex items-center gap-1.5">
                 {index > 0 ? <span aria-hidden>·</span> : null}
                 <span>{shortLabel}</span>
-                <span
-                  aria-hidden
-                  className="relative h-1.5 w-12 overflow-hidden rounded-full bg-muted"
-                >
-                  <span
-                    className="absolute inset-y-0 left-0 rounded-full"
-                    style={{ width: `${usedPercent}%`, backgroundColor: color }}
-                  />
-                </span>
+                <StatusLineBar percent={usedPercent} color={color} />
                 <span className="font-medium text-foreground">{usedPercent}%</span>
                 {resetsAt !== null && resetsAt > now ? (
                   <span className="hidden sm:inline">{formatDuration(resetsAt - now)}</span>

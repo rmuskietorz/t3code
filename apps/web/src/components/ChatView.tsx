@@ -11264,6 +11264,9 @@ export default function ChatView(props: ChatViewProps) {
                                   : undefined
                               }
                               usageLimitsIndicator={usageLimitsIndicator}
+                              gitBranch={
+                                gitStatusQuery.data?.refName ?? activeThread?.branch ?? null
+                              }
                               usageLimitsOpen={usageLimitsBanner !== null}
                               onToggleUsageLimits={toggleUsageLimitsStable}
                               environmentUnavailable={activeEnvironmentUnavailableState}
