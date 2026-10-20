@@ -4846,6 +4846,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerControlsVisibleInStrip =
     composerControlsCollapsed && restingControlsHost !== null && restingControlsVisible;
   const composerControlsHidden = composerControlsCollapsed && !restingControlsVisible;
+  // While resting, the model strip below the card holds the controls, so the status line joins them there.
+  const statusLineInModelStrip =
+    composerControlsVisibleInStrip &&
+    Boolean(restingControlsHost?.closest("[data-composer-model-strip]"));
+  const statusLineProps = {
+    branch: props.gitBranch,
+    contextWindow: activeContextWindow,
+    usageLimits: props.usageLimitsIndicator ? (
+      <ComposerUsageLimitsIndicator
+        indicator={props.usageLimitsIndicator}
+        open={props.usageLimitsOpen}
+        onToggle={props.onToggleUsageLimits}
+      />
+    ) : null,
+  };
   if (composerControlsHidden && isComposerModelPickerOpen) {
     setIsComposerModelPickerOpen(false);
   }
@@ -6350,18 +6365,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     >
       {composerControlsCollapsed && restingControlsHost
         ? createPortal(
-            <div
-              ref={attachRestingComposerControls}
-              data-chat-composer-resting-controls="true"
-              aria-hidden={restingControlsVisible ? undefined : true}
-              inert={restingControlsVisible ? undefined : true}
-              className={cn(
-                "relative flex w-max min-w-0 max-w-full items-center gap-1 font-normal text-muted-foreground/70 [&_button]:text-xs!",
-                !restingControlsVisible && "invisible",
-              )}
-            >
-              {composerControls}
-            </div>,
+            <>
+              <div
+                ref={attachRestingComposerControls}
+                data-chat-composer-resting-controls="true"
+                aria-hidden={restingControlsVisible ? undefined : true}
+                inert={restingControlsVisible ? undefined : true}
+                className={cn(
+                  "relative flex w-max min-w-0 max-w-full items-center gap-1 font-normal text-muted-foreground/70 [&_button]:text-xs!",
+                  !restingControlsVisible && "invisible",
+                )}
+              >
+                {composerControls}
+              </div>
+              {statusLineInModelStrip ? (
+                <ComposerStatusLine {...statusLineProps} className="px-1 pt-0.5" />
+              ) : null}
+            </>,
             restingControlsHost,
           )
         : null}
@@ -7358,19 +7378,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </div>
             ) : null}
           </div>
-          <ComposerStatusLine
-            branch={props.gitBranch}
-            contextWindow={activeContextWindow}
-            usageLimits={
-              props.usageLimitsIndicator ? (
-                <ComposerUsageLimitsIndicator
-                  indicator={props.usageLimitsIndicator}
-                  open={props.usageLimitsOpen}
-                  onToggle={props.onToggleUsageLimits}
-                />
-              ) : null
-            }
-          />
+          {statusLineInModelStrip ? null : (
+            <ComposerStatusLine {...statusLineProps} className="-mt-1 px-3 pb-1.5" />
+          )}
         </ComposerSurface.Main>
       </div>
     </form>

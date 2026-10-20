@@ -1,6 +1,7 @@
 import { Fragment, memo, type ReactNode } from "react";
 
 import type { ContextWindowSnapshot } from "../../lib/contextWindow";
+import { cn } from "../../lib/utils";
 
 /** A thin share-of-capacity bar, shared by the context and usage limit segments. */
 export function StatusLineBar({
@@ -21,17 +22,19 @@ export function StatusLineBar({
 }
 
 /**
- * One line at the bottom of the composer card with what the next turn runs on: branch, context
+ * One line at the bottom of the composer card, or of its model strip while resting, with what the next turn runs on: branch, context
  * use, then the provider's usage limits.
  */
 export const ComposerStatusLine = memo(function ComposerStatusLine({
   branch,
   contextWindow,
   usageLimits,
+  className,
 }: {
   readonly branch: string | null;
   readonly contextWindow: ContextWindowSnapshot | null;
   readonly usageLimits: ReactNode;
+  readonly className?: string;
 }) {
   const contextPercent = contextWindow?.usedPercentage ?? null;
   const segments: { readonly key: string; readonly node: ReactNode }[] = [];
@@ -62,7 +65,12 @@ export const ComposerStatusLine = memo(function ComposerStatusLine({
   }
   if (segments.length === 0 && !usageLimits) return null;
   return (
-    <div className="-mt-1 flex min-w-0 items-center justify-center gap-2 px-3 pb-1.5 text-muted-foreground text-xs whitespace-nowrap tabular-nums">
+    <div
+      className={cn(
+        "flex min-w-0 items-center justify-center gap-2 text-muted-foreground text-xs whitespace-nowrap tabular-nums",
+        className,
+      )}
+    >
       {segments.map(({ key, node }, index) => (
         <Fragment key={key}>
           {index > 0 ? (
