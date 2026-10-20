@@ -218,6 +218,7 @@ import {
   resolveAdjacentThreadId,
   isContextMenuPointerDown,
   isSidebarNestedLinkClick,
+  isSidebarSubagentThread,
   isTrailingDoubleClick,
   resolveProjectStatusIndicator,
   resolveThreadRowClassName,
@@ -1376,7 +1377,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       });
     };
     const visibleProjectThreads = sortThreads(
-      projectThreads.filter((thread) => thread.archivedAt === null),
+      projectThreads.filter(
+        (thread) => thread.archivedAt === null && !isSidebarSubagentThread(thread),
+      ),
       threadSortOrder,
     );
     const projectStatus = resolveProjectStatusIndicator(
@@ -3616,7 +3619,10 @@ export default function LegacySidebar() {
   }, []);
 
   const visibleThreads = useMemo(
-    () => sidebarThreads.filter((thread) => thread.archivedAt === null),
+    () =>
+      sidebarThreads.filter(
+        (thread) => thread.archivedAt === null && !isSidebarSubagentThread(thread),
+      ),
     [sidebarThreads],
   );
   const sortableThreads = useMemo(
@@ -3782,7 +3788,7 @@ export default function LegacySidebar() {
       visibleSortedProjects.flatMap((project) => {
         const projectThreads = sortThreads(
           (threadsByProjectKey.get(project.projectKey) ?? []).filter(
-            (thread) => thread.archivedAt === null,
+            (thread) => thread.archivedAt === null && !isSidebarSubagentThread(thread),
           ),
           sidebarThreadSortOrder,
         );
