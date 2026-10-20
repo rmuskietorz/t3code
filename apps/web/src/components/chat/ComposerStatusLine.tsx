@@ -81,7 +81,7 @@ export const ComposerStatusLine = memo(function ComposerStatusLine({
   }
   if (segments.length === 0 && !usageLimits) return null;
   return (
-    <div className="flex min-w-0 items-center justify-end gap-2 px-1 pt-1 text-muted-foreground text-xs whitespace-nowrap tabular-nums">
+    <div className="flex min-w-0 items-center justify-center gap-2 px-1 pt-1 text-muted-foreground text-xs whitespace-nowrap tabular-nums">
       {segments.map(({ key, node }, index) => (
         <Fragment key={key}>
           {index > 0 ? (
