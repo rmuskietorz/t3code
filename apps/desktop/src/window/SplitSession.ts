@@ -31,7 +31,11 @@ export class SplitSession {
   private readonly info: (message: string, details: Record<string, unknown>) => void;
   /** Open windows, oldest first; this order is the saved order. */
   private readonly open: SplitView[] = [];
-  private recentlyClosed: { readonly state: SplitWindowState; readonly closedAt: number }[] = [];
+  private recentlyClosed: {
+    readonly view: SplitView;
+    readonly state: SplitWindowState;
+    readonly closedAt: number;
+  }[] = [];
   private lastFocused: SplitView | null = null;
   /** Once the app is going away, closing windows must no longer shrink the saved set. */
   private quitting = false;
@@ -80,11 +84,10 @@ export class SplitSession {
     // Log-off and shutdown close every window; they must all come back.
     window.on("query-session-end", () => this.write());
     window.on("session-end", () => this.freeze());
-    let recorded = false;
     const remember = () => {
-      if (recorded || this.quitting) return;
-      recorded = true;
+      if (this.quitting || this.recentlyClosed.some((entry) => entry.view === view)) return;
       this.recentlyClosed.push({
+        view,
         state: structuredClone(view.captureState()),
         closedAt: Date.now(),
       });
@@ -136,7 +139,10 @@ export class SplitSession {
     // last window is being torn down.
     if (open.length === 0) return;
     const since = Date.now() - RECENTLY_CLOSED_MS;
-    this.recentlyClosed = this.recentlyClosed.filter((entry) => entry.closedAt >= since);
+    // A close the page cancelled leaves the window open; it is saved as open, not twice.
+    this.recentlyClosed = this.recentlyClosed.filter(
+      (entry) => entry.closedAt >= since && entry.view.isClosed,
+    );
     const closed = this.recentlyClosed.map((entry) => entry.state);
     const session: SavedSession = {
       version: 1,

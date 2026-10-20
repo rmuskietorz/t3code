@@ -42,6 +42,7 @@ function fixture() {
         closed = true;
         emitter.emit("closed");
       },
+      cancelledClose: () => emitter.emit("close"),
       destroy: () => {
         closed = true;
         emitter.emit("closed");
@@ -73,6 +74,15 @@ describe("SplitSession", () => {
     const first = open("/first");
     open("/second");
     first.destroy();
+    expect(saved()).toEqual(["/first", "/second"]);
+  });
+
+  it("saves a window whose close was cancelled only once", () => {
+    const { session, open, saved } = fixture();
+    const first = open("/first");
+    open("/second");
+    first.cancelledClose();
+    session.freeze();
     expect(saved()).toEqual(["/first", "/second"]);
   });
 
