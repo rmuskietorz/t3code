@@ -64,7 +64,7 @@ import {
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { folderDropTarget, resolveDroppedFolderPath } from "./folderDrop";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
-import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
+import { USAGE_LIMITS_COMMAND, type UsageLimitsIndicator } from "@t3tools/shared/usageLimits";
 import {
   memo,
   type ComponentProps,
@@ -276,6 +276,7 @@ import {
 import { useEnvironmentQuery } from "~/state/query";
 import { useDebouncedValue } from "~/state/queries";
 import { ProviderModelPicker } from "./ProviderModelPicker";
+import { ComposerUsageLimitsIndicator } from "./ComposerUsageLimits";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import {
   type ComposerCommandItem,
@@ -311,6 +312,7 @@ import {
   renderProviderTraitsMenuContent,
   renderProviderTraitsPicker,
 } from "./composerProviderState";
+import { ComposerStatusLine } from "./ComposerStatusLine";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import {
   providerSupportsManualCompaction,
@@ -1521,6 +1523,10 @@ export interface ChatComposerProps {
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
   onUsageLimitsCommand?: (() => void) | undefined;
+  usageLimitsIndicator: UsageLimitsIndicator | null;
+  gitBranch: string | null;
+  usageLimitsOpen: boolean;
+  onToggleUsageLimits: () => void;
   environmentUnavailable: {
     readonly label: string;
     readonly connection: EnvironmentConnectionPresentation;
@@ -6556,7 +6562,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             data-chat-composer-surface="true"
             data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
             className={cn(
-              "rounded-3xl transition-[background-color] duration-200",
+              // The resting footer is positioned against this surface, so the status line below stays clear of it.
+              "relative rounded-3xl transition-[background-color] duration-200",
               "in-data-[thread-context-over]:bg-accent/45 in-data-[thread-context-over]:ring-1 in-data-[thread-context-over]:ring-inset in-data-[thread-context-over]:ring-primary/70",
               isDragOverComposer ? "bg-accent/45 ring-1 ring-inset ring-primary/70" : null,
               projectSelectionRequired ? "opacity-75" : null,
@@ -7351,6 +7358,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </div>
             ) : null}
           </div>
+          <ComposerStatusLine
+            branch={props.gitBranch}
+            contextWindow={activeContextWindow}
+            usageLimits={
+              props.usageLimitsIndicator ? (
+                <ComposerUsageLimitsIndicator
+                  indicator={props.usageLimitsIndicator}
+                  open={props.usageLimitsOpen}
+                  onToggle={props.onToggleUsageLimits}
+                />
+              ) : null
+            }
+          />
         </ComposerSurface.Main>
       </div>
     </form>
