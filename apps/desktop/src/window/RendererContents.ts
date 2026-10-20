@@ -61,9 +61,17 @@ export function allRenderers(window: Electron.BrowserWindow): readonly Electron.
   return panes.length > 0 ? panes : [window.webContents];
 }
 
-/** Whether the webContents with this id is `window`'s own page or one of its panes. */
-export function isAppRendererId(window: Electron.BrowserWindow, id: number): boolean {
-  return window.webContents.id === id || ownerById.get(id) === window;
+/**
+ * The app window whose own page or pane has this webContents id, so IPC can
+ * trust a renderer in any split window, not only the main one.
+ */
+export function appWindowOfRendererId(
+  id: number,
+  main: Electron.BrowserWindow | null,
+): Electron.BrowserWindow | null {
+  const owner = ownerById.get(id);
+  if (owner && !owner.isDestroyed()) return owner;
+  return main?.webContents.id === id ? main : null;
 }
 
 /** Whether `contents` is a pane of any window. */

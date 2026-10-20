@@ -40,7 +40,11 @@ import * as MacPermissions from "../../permissions/MacPermissions.ts";
 import { safariPermissionCheck } from "../../preview/BrowserImport/SafariPermission.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
-import { isAppRendererId, paneById, windowOfContents } from "../../window/RendererContents.ts";
+import {
+  appWindowOfRendererId,
+  paneById,
+  windowOfContents,
+} from "../../window/RendererContents.ts";
 import {
   extractDistroFromUncPath,
   resolveWslPickFolderDefaultPath,
@@ -338,17 +342,15 @@ export const pasteAsText = DesktopIpc.makeIpcMethod({
   result: Schema.Void,
   handler: Effect.fn("desktop.ipc.window.pasteAsText")(function* (_input, event) {
     const electronWindow = yield* ElectronWindow.ElectronWindow;
-    const window = yield* electronWindow.main;
-    if (
-      event === undefined ||
-      Option.isNone(window) ||
-      window.value.isDestroyed() ||
-      !isAppRendererId(window.value, event.sender.id)
-    ) {
+    const main = yield* electronWindow.main;
+    // The sender may be a split view half of any window.
+    const window =
+      event === undefined ? null : appWindowOfRendererId(event.sender.id, Option.getOrNull(main));
+    if (window === null) {
       return;
     }
     const focused = Electron.webContents.getFocusedWebContents();
-    if (focused && !focused.isDestroyed() && windowOfContents(focused) === window.value) {
+    if (focused && !focused.isDestroyed() && windowOfContents(focused) === window) {
       focused.paste();
     }
   }),

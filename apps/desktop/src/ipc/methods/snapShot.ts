@@ -21,7 +21,7 @@ import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as DesktopSnapShot from "../../snapShot/DesktopSnapShot.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
-import { isAppRendererId, paneById, viewportOffset } from "../../window/RendererContents.ts";
+import { appWindowOfRendererId, paneById, viewportOffset } from "../../window/RendererContents.ts";
 
 class SnapShotIpcUnauthorizedSenderError extends Schema.TaggedError<SnapShotIpcUnauthorizedSenderError>()(
   "SnapShotIpcUnauthorizedSenderError",
@@ -35,14 +35,13 @@ class SnapShotIpcUnauthorizedSenderError extends Schema.TaggedError<SnapShotIpcU
 const ensureTrustedSnapShotSender = Effect.fn("desktop.ipc.snapShot.ensureTrustedSender")(
   function* (event: DesktopIpc.DesktopIpcInvokeEvent | undefined) {
     const main = yield* (yield* ElectronWindow.ElectronWindow).main;
-    if (
-      event === undefined ||
-      Option.isNone(main) ||
-      !isAppRendererId(main.value, event.sender.id)
-    ) {
+    // Any split view half is an app renderer, in the main window or another one.
+    const window =
+      event === undefined ? null : appWindowOfRendererId(event.sender.id, Option.getOrNull(main));
+    if (window === null) {
       return yield* new SnapShotIpcUnauthorizedSenderError();
     }
-    return main.value;
+    return window;
   },
 );
 
