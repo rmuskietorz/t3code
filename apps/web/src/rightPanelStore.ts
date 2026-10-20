@@ -1078,6 +1078,54 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
   ),
 );
 
+/**
+ * The panel state another window wrote, merged over this window's. Only this
+ * window's unpersisted entries survive: the pull requests panel and inline
+ * visibility, which is stored only while closed.
+ */
+export function adoptRightPanelStateFromStorage(
+  current: Pick<RightPanelStoreState, "byThreadKey" | "threadPanelVisibilityByThreadKey">,
+  newValue: string,
+): Pick<RightPanelStoreState, "byThreadKey" | "threadPanelVisibilityByThreadKey"> | null {
+  let persisted: unknown;
+  try {
+    persisted = (JSON.parse(newValue) as { state?: unknown }).state;
+  } catch (error) {
+    console.warn("Ignoring unreadable right panel state written by another window", error);
+    return null;
+  }
+  const next = migratePersistedRightPanelState(persisted);
+  return {
+    byThreadKey: {
+      ...Object.fromEntries(
+        Object.entries(current.byThreadKey).filter(([threadKey]) =>
+          isPullRequestsPanelKey(threadKey),
+        ),
+      ),
+      ...next.byThreadKey,
+    },
+    threadPanelVisibilityByThreadKey: {
+      ...Object.fromEntries(
+        Object.entries(current.threadPanelVisibilityByThreadKey).filter(
+          ([, visibility]) => visibility.inlineOpen,
+        ),
+      ),
+      ...next.threadPanelVisibilityByThreadKey,
+    },
+  };
+}
+
+// Split view halves and windows each hold the whole map, so without adopting
+// each other's writes the next write from any of them drops what the others
+// opened. Adopting writes the same value back, which raises no new event.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== RIGHT_PANEL_STORAGE_KEY || event.newValue === null) return;
+    const next = adoptRightPanelStateFromStorage(useRightPanelStore.getState(), event.newValue);
+    if (next !== null) useRightPanelStore.setState(next);
+  });
+}
+
 useRightPanelStore.subscribe((next, previous) => {
   if (next.closeRevisionByThreadKey === previous.closeRevisionByThreadKey) return;
   for (const [threadKey, revision] of Object.entries(next.closeRevisionByThreadKey)) {

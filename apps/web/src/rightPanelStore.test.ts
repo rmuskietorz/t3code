@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { useClosedViewStore } from "./closedViewStore";
 import {
+  adoptRightPanelStateFromStorage,
   migratePersistedRightPanelState,
   pullRequestSurface,
   pullRequestSurfaceId,
@@ -1322,5 +1323,51 @@ describe("rightPanelStore", () => {
     store.reconcileBrowserSurfaces(refA, ["tab-a", "tab-b"]);
     expect(surfaceIds()).toEqual(["browser:tab-a", "terminal:term-1", "diff", "browser:tab-b"]);
     expect(store.getUserActionRevision(refA)).toBe(revision);
+  });
+});
+
+describe("adoptRightPanelStateFromStorage", () => {
+  const keyA = `env-1:thread-A`;
+  const keyB = `env-1:thread-B`;
+  const diffPanel = {
+    isOpen: true,
+    activeSurfaceId: "diff",
+    surfaces: [{ id: "diff", kind: "diff" }],
+  };
+
+  it("takes the panels another window opened instead of keeping a stale map", () => {
+    const next = adoptRightPanelStateFromStorage(
+      {
+        byThreadKey: { [keyA]: { isOpen: false, activeSurfaceId: null, surfaces: [] } },
+        threadPanelVisibilityByThreadKey: {},
+      },
+      JSON.stringify({
+        state: { byThreadKey: { [keyA]: diffPanel, [keyB]: diffPanel } },
+        version: 14,
+      }),
+    );
+    expect(next?.byThreadKey[keyA]?.isOpen).toBe(true);
+    expect(next?.byThreadKey[keyB]?.activeSurfaceId).toBe("diff");
+  });
+
+  it("keeps this window's unpersisted pull requests panel and open popovers", () => {
+    const pullRequestsKey = "pull-requests-panel:pull-requests-panel";
+    const next = adoptRightPanelStateFromStorage(
+      {
+        byThreadKey: { [pullRequestsKey]: diffPanel as never },
+        threadPanelVisibilityByThreadKey: {
+          [keyA]: { inlineOpen: true, popoverOpen: true },
+          [keyB]: { inlineOpen: false, popoverOpen: false },
+        },
+      },
+      JSON.stringify({
+        state: { byThreadKey: {}, threadPanelVisibilityByThreadKey: {} },
+        version: 14,
+      }),
+    );
+    expect(next?.byThreadKey[pullRequestsKey]).toBeDefined();
+    expect(next?.threadPanelVisibilityByThreadKey).toEqual({
+      [keyA]: { inlineOpen: true, popoverOpen: true },
+    });
   });
 });
