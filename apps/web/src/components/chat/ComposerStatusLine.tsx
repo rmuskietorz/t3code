@@ -11,7 +11,7 @@ export function StatusLineBar({
   readonly color: string;
 }) {
   return (
-    <span aria-hidden className="relative h-1.5 w-12 overflow-hidden rounded-full bg-muted">
+    <span aria-hidden className="relative h-1.5 w-12 overflow-hidden rounded-full bg-foreground/15">
       <span
         className="absolute inset-y-0 left-0 rounded-full"
         style={{ width: `${Math.max(0, Math.min(100, percent))}%`, backgroundColor: color }}
@@ -62,7 +62,7 @@ export const ComposerStatusLine = memo(function ComposerStatusLine({
   }
   if (segments.length === 0 && !usageLimits) return null;
   return (
-    <div className="flex min-w-0 items-center justify-center gap-2 px-1 text-muted-foreground text-xs whitespace-nowrap tabular-nums">
+    <div className="-mt-1.5 flex min-w-0 items-center justify-center gap-2 px-1 text-muted-foreground text-xs whitespace-nowrap tabular-nums">
       {segments.map(({ key, node }, index) => (
         <Fragment key={key}>
           {index > 0 ? (
