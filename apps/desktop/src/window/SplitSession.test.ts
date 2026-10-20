@@ -42,6 +42,10 @@ function fixture() {
         closed = true;
         emitter.emit("closed");
       },
+      destroy: () => {
+        closed = true;
+        emitter.emit("closed");
+      },
     };
   };
   const saved = () =>
@@ -54,14 +58,36 @@ function fixture() {
 }
 
 describe("SplitSession", () => {
-  it("brings back every window closed shortly before the last one", () => {
+  it("keeps a window closed shortly before the app ends", () => {
     const { open, saved } = fixture();
     const first = open("/first");
     const second = open("/second");
     first.close();
-    expect(saved()).toEqual(["/second"]);
+    expect(saved()).toEqual(["/first", "/second"]);
     second.close();
     expect(saved()).toEqual(["/first", "/second"]);
+  });
+
+  it("keeps windows destroyed without a close event", () => {
+    const { open, saved } = fixture();
+    const first = open("/first");
+    open("/second");
+    first.destroy();
+    expect(saved()).toEqual(["/first", "/second"]);
+  });
+
+  it("drops a closed window once it is no longer recent", () => {
+    vi.useFakeTimers();
+    try {
+      const { open, saved } = fixture();
+      const first = open("/first");
+      open("/second");
+      first.close();
+      vi.advanceTimersByTime(3 * 60_000);
+      expect(saved()).toEqual(["/second"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps every open window when the app quits", () => {

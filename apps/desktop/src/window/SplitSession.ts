@@ -80,19 +80,29 @@ export class SplitSession {
     // Log-off and shutdown close every window; they must all come back.
     window.on("query-session-end", () => this.write());
     window.on("session-end", () => this.freeze());
+    let recorded = false;
+    const remember = () => {
+      if (recorded || this.quitting) return;
+      recorded = true;
+      this.recentlyClosed.push({
+        state: structuredClone(view.captureState()),
+        closedAt: Date.now(),
+      });
+      // Drops the window from the saved set once it no longer counts as recent.
+      setTimeout(() => this.save(), RECENTLY_CLOSED_MS + SAVE_DEBOUNCE_MS);
+    };
     window.on("close", () => {
       if (this.open.filter((other) => !other.isClosed).length === 1) {
         // The last window closing ends the app, so it stays in the saved set.
         this.freeze();
-      } else if (!this.quitting) {
+      } else {
         // The views are gone by "closed", so the state is read now.
-        this.recentlyClosed.push({
-          state: structuredClone(view.captureState()),
-          closedAt: Date.now(),
-        });
+        remember();
       }
     });
     window.on("closed", () => {
+      // Quitting destroys windows without "close"; the saved state still holds the last read.
+      remember();
       this.open.splice(this.open.indexOf(view), 1);
       if (this.lastFocused === view) this.lastFocused = null;
       if (!this.quitting) this.write();
@@ -109,11 +119,16 @@ export class SplitSession {
   /** Writes the session as it is now and keeps it from changing while windows close. */
   freeze(): void {
     if (this.quitting) return;
-    this.write({ withRecentlyClosed: true });
+    this.write();
     this.quitting = true;
   }
 
-  private write({ withRecentlyClosed = false } = {}): void {
+  /**
+   * Windows closed within the last two minutes are always part of what is
+   * written, so the session survives however the app ends: quitting, a crash,
+   * or Windows ending the process.
+   */
+  private write(): void {
     if (this.saveTimer !== null) clearTimeout(this.saveTimer);
     this.saveTimer = null;
     const open = this.open.filter((view) => !view.isClosed);
@@ -121,9 +136,8 @@ export class SplitSession {
     // last window is being torn down.
     if (open.length === 0) return;
     const since = Date.now() - RECENTLY_CLOSED_MS;
-    const closed = withRecentlyClosed
-      ? this.recentlyClosed.filter((entry) => entry.closedAt >= since).map((entry) => entry.state)
-      : [];
+    this.recentlyClosed = this.recentlyClosed.filter((entry) => entry.closedAt >= since);
+    const closed = this.recentlyClosed.map((entry) => entry.state);
     const session: SavedSession = {
       version: 1,
       windows: [...closed, ...open.map((view) => view.captureState())],
@@ -134,7 +148,6 @@ export class SplitSession {
       this.info("split session saved", {
         open: open.length,
         recentlyClosed: closed.length,
-        quitting: withRecentlyClosed,
       });
     } catch (cause) {
       this.warn("could not save the split session", cause);
