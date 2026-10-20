@@ -6379,7 +6379,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 {composerControls}
               </div>
               {statusLineInModelStrip ? (
-                <ComposerStatusLine {...statusLineProps} className="px-1 pt-0.5" />
+                <ComposerStatusLine {...statusLineProps} placement="strip" />
               ) : null}
             </>,
             restingControlsHost,
@@ -7379,7 +7379,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             ) : null}
           </div>
           {statusLineInModelStrip ? null : (
-            <ComposerStatusLine {...statusLineProps} className="-mt-1 px-3 pb-1.5" />
+            <ComposerStatusLine {...statusLineProps} placement="card" />
           )}
         </ComposerSurface.Main>
       </div>

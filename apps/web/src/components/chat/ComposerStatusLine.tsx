@@ -29,12 +29,12 @@ export const ComposerStatusLine = memo(function ComposerStatusLine({
   branch,
   contextWindow,
   usageLimits,
-  className,
+  placement,
 }: {
   readonly branch: string | null;
   readonly contextWindow: ContextWindowSnapshot | null;
   readonly usageLimits: ReactNode;
-  readonly className?: string;
+  readonly placement: "card" | "strip";
 }) {
   const contextPercent = contextWindow?.usedPercentage ?? null;
   const segments: { readonly key: string; readonly node: ReactNode }[] = [];
@@ -66,9 +66,10 @@ export const ComposerStatusLine = memo(function ComposerStatusLine({
   if (segments.length === 0 && !usageLimits) return null;
   return (
     <div
+      data-composer-status-line={placement}
       className={cn(
         "flex min-w-0 items-center justify-center gap-2 text-muted-foreground text-xs whitespace-nowrap tabular-nums",
-        className,
+        placement === "card" ? "-mt-1 px-3 pb-1.5" : "px-1 pt-0.5",
       )}
     >
       {segments.map(({ key, node }, index) => (
