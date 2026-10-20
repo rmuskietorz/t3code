@@ -64,7 +64,7 @@ import {
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { folderDropTarget, resolveDroppedFolderPath } from "./folderDrop";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
-import { USAGE_LIMITS_COMMAND, type UsageLimitsIndicator } from "@t3tools/shared/usageLimits";
+import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import {
   memo,
   type ComponentProps,
@@ -276,7 +276,6 @@ import {
 import { useEnvironmentQuery } from "~/state/query";
 import { useDebouncedValue } from "~/state/queries";
 import { ProviderModelPicker } from "./ProviderModelPicker";
-import { ComposerUsageLimitsIndicator } from "./ComposerUsageLimits";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import {
   type ComposerCommandItem,
@@ -312,7 +311,6 @@ import {
   renderProviderTraitsMenuContent,
   renderProviderTraitsPicker,
 } from "./composerProviderState";
-import { ComposerStatusLine } from "./ComposerStatusLine";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import {
   providerSupportsManualCompaction,
@@ -1523,10 +1521,6 @@ export interface ChatComposerProps {
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
   onUsageLimitsCommand?: (() => void) | undefined;
-  usageLimitsIndicator: UsageLimitsIndicator | null;
-  gitBranch: string | null;
-  usageLimitsOpen: boolean;
-  onToggleUsageLimits: () => void;
   environmentUnavailable: {
     readonly label: string;
     readonly connection: EnvironmentConnectionPresentation;
@@ -7359,19 +7353,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           </div>
         </ComposerSurface.Main>
       </div>
-      <ComposerStatusLine
-        branch={props.gitBranch}
-        contextWindow={activeContextWindow}
-        usageLimits={
-          props.usageLimitsIndicator ? (
-            <ComposerUsageLimitsIndicator
-              indicator={props.usageLimitsIndicator}
-              open={props.usageLimitsOpen}
-              onToggle={props.onToggleUsageLimits}
-            />
-          ) : null
-        }
-      />
     </form>
   );
 });

@@ -40,7 +40,8 @@ import {
   usageLimitsIndicator as deriveUsageLimitsIndicator,
 } from "@t3tools/shared/usageLimits";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
-import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
+import { ComposerStatusLine } from "./chat/ComposerStatusLine";
+import { ComposerUsageLimitsIndicator, usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as Schema from "effect/Schema";
 import {
@@ -11263,12 +11264,6 @@ export default function ChatView(props: ChatViewProps) {
                                   ? openUsageLimitsStable
                                   : undefined
                               }
-                              usageLimitsIndicator={usageLimitsIndicator}
-                              gitBranch={
-                                gitStatusQuery.data?.refName ?? activeThread?.branch ?? null
-                              }
-                              usageLimitsOpen={usageLimitsBanner !== null}
-                              onToggleUsageLimits={toggleUsageLimitsStable}
                               environmentUnavailable={activeEnvironmentUnavailableState}
                               activePendingApproval={activePendingApproval}
                               pendingApprovals={pendingApprovals}
@@ -11434,6 +11429,19 @@ export default function ChatView(props: ChatViewProps) {
                         </div>
                       </div>
                     </ComposerSurface.Shell>
+                    <ComposerStatusLine
+                      branch={gitStatusQuery.data?.refName ?? activeThread?.branch ?? null}
+                      contextWindow={activeContextWindow}
+                      usageLimits={
+                        usageLimitsIndicator ? (
+                          <ComposerUsageLimitsIndicator
+                            indicator={usageLimitsIndicator}
+                            open={usageLimitsBanner !== null}
+                            onToggle={toggleUsageLimitsStable}
+                          />
+                        ) : null
+                      }
+                    />
                     <div
                       aria-hidden
                       className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"

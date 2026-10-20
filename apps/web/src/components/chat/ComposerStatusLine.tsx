@@ -21,7 +21,7 @@ export function StatusLineBar({
 }
 
 /**
- * One line under the composer with what the next turn runs on: branch, context
+ * One line under the composer card with what the next turn runs on: branch, context
  * use, then the provider's usage limits.
  */
 export const ComposerStatusLine = memo(function ComposerStatusLine({
@@ -62,7 +62,7 @@ export const ComposerStatusLine = memo(function ComposerStatusLine({
   }
   if (segments.length === 0 && !usageLimits) return null;
   return (
-    <div className="-mt-1.5 mb-1.5 flex min-w-0 items-center justify-center gap-2 px-1 text-muted-foreground text-xs whitespace-nowrap tabular-nums">
+    <div className="flex min-w-0 items-center justify-center gap-2 px-1 pt-1 text-muted-foreground text-xs whitespace-nowrap tabular-nums">
       {segments.map(({ key, node }, index) => (
         <Fragment key={key}>
           {index > 0 ? (
