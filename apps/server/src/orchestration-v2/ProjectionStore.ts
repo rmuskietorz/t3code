@@ -427,10 +427,16 @@ export interface ProjectionStoreV2Shape {
     ReadonlyArray<{ readonly threadId: ThreadId; readonly worktreePath: string }>,
     ProjectionStoreV2Error
   >;
-  /** Includes deleted threads, so an importer cannot resurrect history the user removed. */
-  readonly getProviderThreadOwner: (
-    providerThreadId: ProviderThreadId,
-  ) => Effect.Effect<Option.Option<ThreadId>, ProjectionStoreV2Error>;
+  /**
+   * Includes deleted threads, so an importer cannot resurrect history the user removed. Threads
+   * T3 starts keep the provider thread id of their pending run and learn the native session
+   * later, so the native id is matched as well.
+   */
+  readonly getProviderThreadOwner: (input: {
+    readonly providerThreadId: ProviderThreadId;
+    readonly driver: string;
+    readonly nativeThreadId: string;
+  }) => Effect.Effect<Option.Option<ThreadId>, ProjectionStoreV2Error>;
   readonly getTurnStartContext: (
     threadId: ThreadId,
     runId: RunId,
@@ -5687,13 +5693,16 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
       );
 
-    const getProviderThreadOwner: ProjectionStoreV2Shape["getProviderThreadOwner"] = (
-      providerThreadId,
-    ) =>
+    const getProviderThreadOwner: ProjectionStoreV2Shape["getProviderThreadOwner"] = (input) =>
       sql<{ readonly thread_id: string | null }>`
         SELECT thread_id
         FROM orchestration_v2_projection_provider_threads
-        WHERE provider_thread_id = ${providerThreadId}
+        WHERE provider_thread_id = ${input.providerThreadId}
+          OR (
+            driver = ${input.driver}
+            AND json_extract(payload_json, '$.nativeThreadRef.nativeId') = ${input.nativeThreadId}
+          )
+        LIMIT 1
       `.pipe(
         Effect.map((rows) =>
           Option.map(Option.fromNullishOr(rows[0]?.thread_id), (threadId) =>
@@ -6199,13 +6208,18 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             ),
           ),
         ),
-      getProviderThreadOwner: (providerThreadId) =>
+      getProviderThreadOwner: (input) =>
         Ref.get(replayState).pipe(
           Effect.map((state) =>
             Option.fromNullishOr(
               [...state.projections.values()]
                 .flatMap(({ providerThreads }) => providerThreads)
-                .find((providerThread) => providerThread.id === providerThreadId)?.appThreadId,
+                .find(
+                  (providerThread) =>
+                    providerThread.id === input.providerThreadId ||
+                    (providerThread.driver === input.driver &&
+                      providerThread.nativeThreadRef?.nativeId === input.nativeThreadId),
+                )?.appThreadId,
             ),
           ),
         ),

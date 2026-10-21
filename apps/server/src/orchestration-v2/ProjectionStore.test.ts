@@ -430,7 +430,7 @@ const providerThreadOwnerSurvivesThreadDeletion = Effect.gen(function* () {
       providerSessionId: null,
       appThreadId: threadId,
       ownerNodeId: null,
-      nativeThreadRef: null,
+      nativeThreadRef: { driver, nativeId: "native-session", strength: "strong" },
       nativeConversationHeadRef: null,
       status: "idle",
       firstRunOrdinal: null,
@@ -449,9 +449,26 @@ const providerThreadOwnerSurvivesThreadDeletion = Effect.gen(function* () {
     payload: { ...thread, deletedAt: now },
   });
 
-  assert.deepEqual(yield* store.getProviderThreadOwner(providerThreadId), Option.some(threadId));
+  const unknown = ProviderThreadId.make("provider-thread:unknown");
   assert.deepEqual(
-    yield* store.getProviderThreadOwner(ProviderThreadId.make("provider-thread:unknown")),
+    yield* store.getProviderThreadOwner({ providerThreadId, driver, nativeThreadId: "other" }),
+    Option.some(threadId),
+  );
+  // A thread T3 started keeps its pending provider thread id; only the native id matches.
+  assert.deepEqual(
+    yield* store.getProviderThreadOwner({
+      providerThreadId: unknown,
+      driver,
+      nativeThreadId: "native-session",
+    }),
+    Option.some(threadId),
+  );
+  assert.deepEqual(
+    yield* store.getProviderThreadOwner({
+      providerThreadId: unknown,
+      driver,
+      nativeThreadId: "other",
+    }),
     Option.none(),
   );
 });

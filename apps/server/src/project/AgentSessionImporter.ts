@@ -319,13 +319,18 @@ const make = Effect.gen(function* () {
           }
 
           const model = thread.model ?? DEFAULT_MODEL_BY_PROVIDER[driver] ?? DEFAULT_MODEL;
-          // Native and imported threads derive the same provider thread id from the
-          // session, so writing one here would take over a thread T3 is running.
+          // Writing a provider thread for a session T3 runs itself would take that thread over
+          // and list the conversation twice.
           const providerThreadId = idAllocator.derive.providerThread({
             driver,
             nativeThreadId: thread.providerSessionId,
           });
-          if (Option.isSome(yield* projections.getProviderThreadOwner(providerThreadId))) {
+          const owner = yield* projections.getProviderThreadOwner({
+            providerThreadId,
+            driver,
+            nativeThreadId: thread.providerSessionId,
+          });
+          if (Option.isSome(owner)) {
             foreignTranscripts.add(foreignTranscriptKey(source));
             return "foreign" as const;
           }
