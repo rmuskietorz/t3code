@@ -682,6 +682,8 @@ export type ServerConfigProviderStatusesPayload = typeof ServerConfigProviderSta
 
 export const ServerConfigSettingsUpdatedPayload = Schema.Struct({
   settings: ServerSettings,
+  // Follows `addProjectBaseDirectory`, which the client cannot resolve itself.
+  newProjectsRoot: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type ServerConfigSettingsUpdatedPayload = typeof ServerConfigSettingsUpdatedPayload.Type;
 

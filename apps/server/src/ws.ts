@@ -343,7 +343,7 @@ export const withLateEditorConfig = <E, R>(
           case "providerStatuses":
             return [{ ...current, providers: event.payload.providers }, [event]];
           case "settingsUpdated":
-            return [{ ...current, settings: event.payload.settings }, [event]];
+            return [{ ...current, ...event.payload }, [event]];
           // Themes and usage-limit sources never ride in a snapshot; clients
           // carry their projected values across one.
           default:
@@ -1706,7 +1706,7 @@ const layerWsRpc = (
               onNone: () => ({}),
               onSome: (root) => ({ scratchWorkspaceRoot: root }),
             }),
-            newProjectsRoot: managedFolders.namedProjectsRoot,
+            newProjectsRoot: yield* managedFolders.namedProjectsRoot,
           };
         });
 
@@ -3006,12 +3006,18 @@ const layerWsRpc = (
                     )
                   : Stream.empty;
               const settingsUpdates = serverSettings.streamChanges.pipe(
-                Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
-                Stream.map((settings) => ({
-                  version: 1 as const,
-                  type: "settingsUpdated" as const,
-                  payload: { settings },
-                })),
+                Stream.mapEffect((settings) =>
+                  managedFolders.namedProjectsRoot.pipe(
+                    Effect.map((newProjectsRoot) => ({
+                      version: 1 as const,
+                      type: "settingsUpdated" as const,
+                      payload: {
+                        settings: ServerSettings.redactServerSettingsForClient(settings),
+                        newProjectsRoot,
+                      },
+                    })),
+                  ),
+                ),
               );
 
               const liveUpdates = Stream.merge(

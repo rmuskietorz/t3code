@@ -92,6 +92,7 @@ const withScratch = <A, E>(
     E,
     | ManagedProjectFolders.ManagedProjectFolders
     | ProjectService.ProjectService
+    | ServerSettings.ServerSettingsService
     | NodeServices.NodeServices
     | Scope.Scope
   >,
@@ -358,7 +359,7 @@ it.effect("starts a named project as a committed repository, and suffixes a take
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const root = path.resolve(baseDir, "projects");
-        assert.equal(folders.namedProjectsRoot, root);
+        assert.equal(yield* folders.namedProjectsRoot, root);
 
         const first = yield* folders.createNamedProject({ name: "Pinball Stats" });
         const second = yield* folders.createNamedProject({ name: "pinball stats" });
@@ -388,6 +389,28 @@ it.effect("starts a named project as a committed repository, and suffixes a take
           "main",
         );
         assert.equal(yield* gitOutput(first.workspaceRoot, ["status", "--porcelain"]), "");
+      }),
+    ),
+  ),
+);
+
+it.effect("starts named projects in the Add Project base directory when one is set", () =>
+  withScratch(({ baseDir }) =>
+    withGitEnv(
+      TEST_IDENTITY,
+      Effect.gen(function* () {
+        const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
+        const settings = yield* ServerSettings.ServerSettingsService;
+        const path = yield* Path.Path;
+        const custom = path.join(baseDir, "code");
+        yield* settings.updateSettings({ addProjectBaseDirectory: custom });
+
+        const created = yield* folders.createNamedProject({ name: "Elsewhere" });
+        assert.equal(created.workspaceRoot, path.join(custom, "elsewhere"));
+
+        // A path from another OS, synced from a Windows server, is unusable here.
+        yield* settings.updateSettings({ addProjectBaseDirectory: "D:\\code" });
+        assert.equal(yield* folders.namedProjectsRoot, path.resolve(baseDir, "projects"));
       }),
     ),
   ),
@@ -453,7 +476,7 @@ it.effect("keeps a folder that another project owns when the create conflicts", 
         const projects = yield* ProjectService.ProjectService;
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const taken = path.join(folders.namedProjectsRoot, "taken");
+        const taken = path.join(yield* folders.namedProjectsRoot, "taken");
         yield* projects.create({
           commandId: CommandId.make("command:owner"),
           projectId: ProjectId.make("project:owner"),
