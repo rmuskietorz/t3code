@@ -87,6 +87,7 @@ const TranscriptRecord = Schema.Struct({
   sessionId: Schema.optional(Schema.String),
   aiTitle: Schema.optional(Schema.String),
   isSidechain: Schema.optional(Schema.Boolean),
+  entrypoint: Schema.optional(Schema.String),
   isMeta: Schema.optional(Schema.Boolean),
   isCompactSummary: Schema.optional(Schema.Boolean),
   message: Schema.optional(TranscriptMessage),
@@ -277,6 +278,10 @@ export function parseAgentSessionTranscript(
   return parseAgentSessionRecords(input, records);
 }
 
+// Scripts and tools run Claude through the Python SDK or `claude -p`; those one-shot runs are not
+// conversations to resume. The TypeScript SDK stays importable, since T3 itself runs Claude with it.
+const SCRIPTED_CLAUDE_ENTRYPOINTS: ReadonlySet<string> = new Set(["sdk-py", "sdk-cli"]);
+
 function parseAgentSessionRecords(
   input: AgentSessionTranscriptMetadata,
   records: ReadonlyArray<DecodedTranscriptRecord>,
@@ -375,6 +380,9 @@ function parseAgentSessionRecords(
   for (const record of records) {
     recordIndex += 1;
     if (input.source === "claudeAgent") {
+      if (record.entrypoint !== undefined && SCRIPTED_CLAUDE_ENTRYPOINTS.has(record.entrypoint)) {
+        return null;
+      }
       if (
         record.isSidechain === true ||
         record.isMeta === true ||
@@ -759,9 +767,10 @@ export const make = Effect.gen(function* () {
     ).pipe(Effect.orElseSucceed(() => null));
   });
 
-  // A transcript over the history budget fails the same way until it changes, so
-  // periodic re-imports skip it by identity instead of streaming it again.
-  const oversizedTranscripts = new Map<string, ReturnType<typeof transcriptIdentity>>();
+  // A transcript over the history budget, or one that parses to no importable thread, fails the
+  // same way until it changes, so periodic re-imports skip it by identity instead of streaming it
+  // again and spending the per-scan session budget on it.
+  const unimportableTranscripts = new Map<string, ReturnType<typeof transcriptIdentity>>();
 
   const readTranscript = Effect.fn("AgentSessionScanner.readTranscript")(function* (
     filePath: string,
@@ -849,7 +858,7 @@ export const make = Effect.gen(function* () {
           Effect.andThen(
             Effect.sync(() => {
               if (cause instanceof Error && cause.cause instanceof TranscriptJsonLimitError) {
-                oversizedTranscripts.set(filePath, expected);
+                unimportableTranscripts.set(filePath, expected);
               }
             }),
           ),
@@ -1367,9 +1376,9 @@ export const make = Effect.gen(function* () {
               source: completedSource,
             });
           }
-          const oversized = oversizedTranscripts.get(transcript.filePath);
+          const unimportable = unimportableTranscripts.get(transcript.filePath);
           if (
-            (oversized !== undefined && sameTranscriptIdentity(oversized, identity)) ||
+            (unimportable !== undefined && sameTranscriptIdentity(unimportable, identity)) ||
             transcriptsRemaining === 0 ||
             recordsRemaining === 0 ||
             identity.size > MAX_IMPORTED_TRANSCRIPT_BYTES ||
@@ -1416,6 +1425,7 @@ export const make = Effect.gen(function* () {
             snapshot.records,
           );
           if (parsedThread === null) {
+            unimportableTranscripts.set(transcript.filePath, identity);
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
 
