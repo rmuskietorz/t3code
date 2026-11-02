@@ -811,7 +811,14 @@ export const make = Effect.gen(function* () {
               const decoded = decodeTranscriptValue(reader.finish());
               if (Option.isSome(decoded) && shouldRetainDecodedRecord(source, decoded.value)) {
                 records.push(decoded.value);
-                historyBytes += recordBytes;
+                // Parsing reserves every key and token, including fields the selector drops, such
+                // as tool results; only the selected value stays in memory across records.
+                historyBytes += JSON.stringify(decoded.value).length * 2;
+                if (historyBytes > MAX_IMPORT_HISTORY_BYTES) {
+                  throw new TranscriptJsonLimitError(
+                    "Transcript selected history exceeds the 32 MiB memory budget",
+                  );
+                }
               }
               recordBytes = 0;
               reader = createTranscriptJsonReader(reserve, selectTranscriptPath);

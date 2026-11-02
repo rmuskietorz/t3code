@@ -2022,6 +2022,43 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
       }),
     );
 
+    it.effect("does not count fields the import drops against the history budget", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+        const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+        const workspace = yield* makeTempDir("t3code-workspace-");
+        // Tool results ride on user records under keys the import never keeps; parsing them
+        // costs more than 32 MiB here, while the text it keeps stays small.
+        const dropped = { ["k".repeat(1024 * 1024)]: true };
+        yield* writeTranscript({
+          filePath: path.join(claudeHomePath, "projects", "-workspace", "long-session.jsonl"),
+          contents: Array.from({ length: 20 }, (_, index) =>
+            encodeTranscriptRecord({
+              type: index % 2 === 0 ? "user" : "assistant",
+              cwd: workspace,
+              sessionId: "long-session",
+              ...(index === 0 ? {} : { toolUseResult: dropped }),
+              message: { role: index % 2 === 0 ? "user" : "assistant", content: `Turn ${index}` },
+            }),
+          ).join("\n"),
+          mtimeMs: nowMs,
+        });
+
+        const outcomes = yield* runRecentThreadOutcomes({
+          claudeHomePath,
+          codexHomePath,
+          workspaceRoot: workspace,
+        });
+
+        expect(outcomes).toMatchObject([
+          { _tag: "Importable", thread: { providerSessionId: "long-session" } },
+        ]);
+      }),
+    );
+
     it.effect("reports stat, read, and parse failures as skipped", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
