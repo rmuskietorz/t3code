@@ -3339,6 +3339,8 @@ export interface ClaudeAdapterV2Options {
   readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
+  /** Reports whether a live top-level reply got past authentication. */
+  readonly onAuthenticationResult?: (result: "failed" | "succeeded") => Effect.Effect<void>;
   readonly continuationRequests?: {
     readonly offer: (
       request: ProviderContinuationRequests.ProviderContinuationRequest,
@@ -6677,6 +6679,15 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   cwd: path.resolve(context.input.runtimePolicy.cwd ?? "."),
                 });
               }
+              // Other errors, such as an overload or a network failure, say nothing about the login.
+              if (
+                adapterOptions.onAuthenticationResult &&
+                (message.error === undefined || message.error === "authentication_failed")
+              ) {
+                yield* adapterOptions.onAuthenticationResult(
+                  message.error === undefined ? "succeeded" : "failed",
+                );
+              }
             }
           }
 
@@ -9140,7 +9151,10 @@ export type ClaudeAdapterV2DriverEnv =
 export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
   function* (
     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
-    hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits"> = {},
+    hooks: Pick<
+      ClaudeAdapterV2Options,
+      "scopedLimitNames" | "onUsageLimits" | "onAuthenticationResult"
+    > = {},
   ) {
     const { instanceId, environment, enabled, config } = input;
     const fileSystem = yield* FileSystem.FileSystem;

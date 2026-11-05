@@ -59,8 +59,10 @@ export class ProviderRegistry extends Context.Service<
      * cached list (no error) — matching the legacy `refresh` shim behaviour so
      * transport layers don't have to special-case unknowns.
      */
+    /** `fresh` drops the instance's cached probes first, e.g. after the user signs in. */
     readonly refreshInstance: (
       instanceId: ProviderInstanceId,
+      options?: { readonly fresh?: boolean },
     ) => Effect.Effect<ReadonlyArray<ServerProvider>>;
 
     readonly refreshWorkspaceSnapshot: (input: {
@@ -663,7 +665,12 @@ export const layer = Layer.effect(
 
     const refreshInstance = Effect.fn("refreshInstance")(function* (
       instanceId: ProviderInstanceId,
+      options?: { readonly fresh?: boolean },
     ) {
+      if (options?.fresh) {
+        const instance = yield* instanceRegistry.getInstance(instanceId);
+        yield* instance?.invalidateCaches ?? Effect.void;
+      }
       const sources = yield* getLiveSources;
       const providerSource = sources.find((candidate) => candidate.instanceId === instanceId);
       if (!providerSource) {
@@ -938,8 +945,8 @@ export const layer = Layer.effect(
       getProviders: Ref.get(providersRef),
       refresh: (provider?: ProviderDriverKind) =>
         refresh(provider).pipe(Effect.catchCause(recoverRefreshFailure)),
-      refreshInstance: (instanceId: ProviderInstanceId) =>
-        refreshInstance(instanceId).pipe(Effect.catchCause(recoverRefreshFailure)),
+      refreshInstance: (instanceId, options) =>
+        refreshInstance(instanceId, options).pipe(Effect.catchCause(recoverRefreshFailure)),
       refreshWorkspaceSnapshot: (input) =>
         refreshWorkspaceSnapshot(input).pipe(Effect.catchCause(recoverRefreshFailure)),
       getProviderMaintenanceCapabilitiesForInstance,

@@ -22,6 +22,7 @@ import {
 import { ProviderDriverError } from "../Errors.ts";
 import { claudeUsageReader } from "./claudeUsage.ts";
 import { makeClaudeScopedLimitNames } from "../claudeUsageLimits.ts";
+import { makeClaudeSignedOutMarker } from "./claudeSignedOut.ts";
 import * as ClaudeResetCredits from "../claudeResetCredits.ts";
 import * as ResetCreditCoordinator from "../resetCreditCoordinator.ts";
 import {
@@ -158,6 +159,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       });
 
       const scopedLimitNames = yield* makeClaudeScopedLimitNames;
+      const driverScope = yield* Effect.scope;
+      const signedOut = yield* makeClaudeSignedOutMarker({
+        markerPath: path.join(stateDir, `claude-signed-out-${instanceId}`),
+        credentialsPath: path.join(configDir, ".credentials.json"),
+      }).pipe(Effect.provideService(FileSystem.FileSystem, fileSystem));
       const orchestrationAdapter = yield* createClaudeAdapterV2(
         {
           instanceId,
@@ -167,7 +173,17 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
           enabled,
           config,
         },
-        { scopedLimitNames, onUsageLimits: (update) => snapshot.applyUsageLimits(update) },
+        {
+          scopedLimitNames,
+          onUsageLimits: (update) => snapshot.applyUsageLimits(update),
+          // The refresh probes Claude again, so it must not hold up the turn's stream.
+          onAuthenticationResult: (result) =>
+            (result === "failed" ? signedOut.markSignedOut : signedOut.markAuthenticated).pipe(
+              Effect.flatMap((changed) =>
+                changed ? Effect.asVoid(Effect.forkIn(snapshot.refresh, driverScope)) : Effect.void,
+              ),
+            ),
+        },
       ).pipe(
         Effect.mapError(
           (cause) =>
@@ -230,6 +246,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
             Effect.map(stampIdentity),
           ),
         ),
+        Effect.flatMap(signedOut.applyTo),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),
