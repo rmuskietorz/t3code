@@ -397,6 +397,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["stacked split side by side unified inline view"],
   },
   {
+    id: "diff-base-branch",
+    title: "Diff base branch",
+    to: "/settings/general",
+    searchTerms: ["changes compare release candidate master main automatic base ref"],
+  },
+  {
     id: "proactive-panels",
     title: "Proactive panels",
     to: "/settings/general",

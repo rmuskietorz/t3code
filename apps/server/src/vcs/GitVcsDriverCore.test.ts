@@ -31,6 +31,7 @@ import {
 } from "@t3tools/contracts";
 import * as ServerConfig from "../config.ts";
 import { gitCommandDuration } from "../observability/Metrics.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import {
   makeGitVcsDriverCore,
   parseGitCheckoutProgressLine,
@@ -1528,6 +1529,49 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
   });
 
   describe("review diff previews", () => {
+    it.effect("compares against the newest release branch when the setting asks for it", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["branch", "release_v1.9"]);
+        yield* git(cwd, ["checkout", "-b", "release_v1.10"]);
+        yield* writeTextFile(cwd, "release.txt", "release fix\n");
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "release fix"]);
+        yield* git(cwd, ["checkout", "-b", "feature/on-release"]);
+        yield* writeTextFile(cwd, "feature.txt", "feature\n");
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "feature"]);
+
+        const branchRange = (diffBaseBranch: "latest-release" | "default-branch") =>
+          Effect.gen(function* () {
+            const driver = yield* makeGitVcsDriverCore().pipe(
+              Effect.provide(
+                Layer.mergeAll(
+                  ServerSettings.ServerSettingsService.layerTest({ diffBaseBranch }),
+                  layerServerConfig,
+                ),
+              ),
+            );
+            const preview = yield* driver.getReviewDiffPreview({ cwd });
+            const source = preview.sources.find((item) => item.kind === "branch-range")!;
+            return {
+              baseRef: source.baseRef,
+              files: (source.files ?? []).map((file) => file.path).toSorted(),
+            };
+          });
+
+        assert.deepStrictEqual(yield* branchRange("latest-release"), {
+          baseRef: "release_v1.10",
+          files: ["feature.txt"],
+        });
+        assert.deepStrictEqual(yield* branchRange("default-branch"), {
+          baseRef: initialBranch,
+          files: ["feature.txt", "release.txt"],
+        });
+      }),
+    );
+
     it.effect("loads repository-relative files from a nested project directory", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

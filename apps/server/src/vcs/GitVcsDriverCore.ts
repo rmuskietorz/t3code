@@ -44,6 +44,8 @@ import {
   parseRemoteRefWithRemoteNames,
 } from "../git/remoteRefs.ts";
 import * as ServerConfig from "../config.ts";
+import * as ServerSettings from "../serverSettings.ts";
+import { isReleaseBranchName, pickLatestReleaseBranch } from "./latestReleaseBranch.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const gitProcesses = Semaphore.makeUnsafe(8);
@@ -930,6 +932,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const { worktreesDir } = yield* ServerConfig.ServerConfig;
   const crypto = yield* Crypto.Crypto;
   const hostPlatform = yield* HostProcess.Platform;
+  // Optional so standalone uses of the driver (CLI, tests) keep the default-branch base.
+  const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
 
   const executeRaw: GitVcsDriver.GitVcsDriver["Service"]["execute"] = Effect.fnUntraced(
     function* (input) {
@@ -2706,6 +2710,79 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return { env };
   });
 
+  const readDiffBaseBranchSetting = Effect.fn("readDiffBaseBranchSetting")(function* () {
+    if (Option.isNone(serverSettings)) return "default-branch" as const;
+    return yield* serverSettings.value.getSettings.pipe(
+      Effect.map((settings) => settings.diffBaseBranch),
+      Effect.tapError((cause) =>
+        Effect.logWarning("Could not read the diff base setting; using the default branch.", {
+          cause,
+        }),
+      ),
+      Effect.orElseSucceed(() => "default-branch" as const),
+    );
+  });
+
+  /**
+   * The newest release branch, as a remote ref when the primary remote has it. Null on the
+   * default branch or a release branch, where a release base would show unrelated history.
+   */
+  const resolveLatestReleaseBaseRef = Effect.fn("resolveLatestReleaseBaseRef")(function* (
+    cwd: string,
+    branch: string,
+  ) {
+    if (isReleaseBranchName(branch)) return null;
+    const primaryRemoteName = yield* resolvePrimaryRemoteName(cwd).pipe(
+      Effect.orElseSucceed(() => null),
+    );
+    const defaultBranch =
+      primaryRemoteName === null ? null : yield* resolveDefaultBranchName(cwd, primaryRemoteName);
+    if (
+      branch === defaultBranch ||
+      (DEFAULT_BASE_BRANCH_CANDIDATES as ReadonlyArray<string>).includes(branch)
+    ) {
+      return null;
+    }
+    const refNames = (yield* runGitStdout("GitVcsDriver.resolveLatestReleaseBaseRef", cwd, [
+      "for-each-ref",
+      "--format=%(refname:short)",
+      "refs/heads",
+      ...(primaryRemoteName === null ? [] : [`refs/remotes/${primaryRemoteName}`]),
+    ]))
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const remotePrefix = primaryRemoteName === null ? null : `${primaryRemoteName}/`;
+    const remoteBranches = new Set(
+      remotePrefix === null
+        ? []
+        : refNames
+            .filter((name) => name.startsWith(remotePrefix))
+            .map((name) => name.slice(remotePrefix.length)),
+    );
+    const localBranches = refNames.filter(
+      (name) => remotePrefix === null || !name.startsWith(remotePrefix),
+    );
+    const latest = pickLatestReleaseBranch([...localBranches, ...remoteBranches]);
+    if (latest === null) return null;
+    return remotePrefix !== null && remoteBranches.has(latest)
+      ? `${remotePrefix}${latest}`
+      : latest;
+  });
+
+  const resolveAutomaticReviewBaseRef = Effect.fn("resolveAutomaticReviewBaseRef")(function* (
+    cwd: string,
+    branch: string,
+  ) {
+    if ((yield* readDiffBaseBranchSetting()) === "latest-release") {
+      const release = yield* resolveLatestReleaseBaseRef(cwd, branch).pipe(
+        Effect.orElseSucceed(() => null),
+      );
+      if (release !== null) return release;
+    }
+    return yield* resolveBaseBranchForNoUpstream(cwd, branch, { allowRemoteOfCurrent: true });
+  });
+
   const resolveReviewMergeBase = Effect.fn("resolveReviewMergeBase")(function* (
     cwd: string,
     branch: string | null,
@@ -2714,9 +2791,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const baseRef =
       explicitBaseRef ??
       (branch
-        ? yield* resolveBaseBranchForNoUpstream(cwd, branch, { allowRemoteOfCurrent: true }).pipe(
-            Effect.orElseSucceed(() => null),
-          )
+        ? yield* resolveAutomaticReviewBaseRef(cwd, branch).pipe(Effect.orElseSucceed(() => null))
         : null);
     if (baseRef === null) return { baseRef, mergeBase: "HEAD" };
     const args = ["merge-base", baseRef, "HEAD"];

@@ -10,6 +10,12 @@ rebases, the files Git brought in are left out. A file stays in the list when th
 committed it, or fixed a conflict in it. Use the branch comparison to review everything that changed
 against your base branch. Restore still returns the complete saved workspace.
 
+With the base set to **Automatic**, the branch comparison uses your newest release branch, such as
+`release_v1.3.6` or `release/2.0`. To compare against `main` or `master` instead, set
+**Settings → General → Diff base branch** to **Default branch**. A repository without release
+branches, and a checkout of the default branch or a release branch, always compares against the
+default branch.
+
 ## Connect an account
 
 Install Git and configure authentication on the machine running your T3 Code server. For a remote

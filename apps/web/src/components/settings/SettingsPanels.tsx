@@ -50,6 +50,7 @@ import {
   MIN_PANEL_ANIMATION_DURATION_MS,
   MIN_PROMPT_FONT_SIZE,
   MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
+  type DiffBaseBranch,
   type ResponseStreamingMode,
   MIN_TERMINAL_FONT_SIZE,
   type QuitConfirmationMode,
@@ -186,6 +187,11 @@ const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, s
   artwork: "Artwork",
   pill: "Version pill",
   none: "None",
+};
+
+const DIFF_BASE_BRANCH_LABELS: Record<DiffBaseBranch, string> = {
+  "latest-release": "Latest release branch",
+  "default-branch": "Default branch",
 };
 
 const RESPONSE_STREAMING_MODE_LABELS: Record<ResponseStreamingMode, string> = {
@@ -614,6 +620,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Diff whitespace changes"]
         : []),
       ...(settings.diffLayout !== DEFAULT_UNIFIED_SETTINGS.diffLayout ? ["Diff layout"] : []),
+      ...(settings.diffBaseBranch !== DEFAULT_UNIFIED_SETTINGS.diffBaseBranch
+        ? ["Diff base branch"]
+        : []),
       ...(settings.proactivePanelsEnabled !== DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled
         ? ["Proactive panels"]
         : []),
@@ -721,6 +730,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.diffFilesCollapsed,
       settings.diffIgnoreWhitespace,
       settings.diffLayout,
+      settings.diffBaseBranch,
       settings.proactivePanelsEnabled,
       settings.environmentIdentificationMode,
       settings.contextWindowMeterEnabled,
@@ -827,6 +837,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffFilesCollapsed: DEFAULT_UNIFIED_SETTINGS.diffFilesCollapsed,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       diffLayout: DEFAULT_UNIFIED_SETTINGS.diffLayout,
+      diffBaseBranch: DEFAULT_UNIFIED_SETTINGS.diffBaseBranch,
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
@@ -2693,6 +2704,44 @@ export function GeneralSettingsPanel() {
                 </SelectItem>
                 <SelectItem hideIndicator value="split">
                   {DIFF_LAYOUT_LABELS.split}
+                </SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+        <SettingsRow
+          serverScoped
+          settingKeys={["diffBaseBranch"]}
+          {...searchableSetting("diff-base-branch")}
+          description="What Changes compares a branch against when the base is Automatic. Without a release branch, or on the default or a release branch, it uses the default branch."
+          resetAction={
+            settings.diffBaseBranch !== DEFAULT_UNIFIED_SETTINGS.diffBaseBranch ? (
+              <SettingResetButton
+                label="diff base branch"
+                onClick={() =>
+                  updateSettings({ diffBaseBranch: DEFAULT_UNIFIED_SETTINGS.diffBaseBranch })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.diffBaseBranch}
+              onValueChange={(value) => {
+                if (value === "latest-release" || value === "default-branch") {
+                  updateSettings({ diffBaseBranch: value });
+                }
+              }}
+            >
+              <SelectTrigger size="sm" className="w-full sm:w-56" aria-label="Diff base branch">
+                <SelectValue>{DIFF_BASE_BRANCH_LABELS[settings.diffBaseBranch]}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="latest-release">
+                  {DIFF_BASE_BRANCH_LABELS["latest-release"]}
+                </SelectItem>
+                <SelectItem hideIndicator value="default-branch">
+                  {DIFF_BASE_BRANCH_LABELS["default-branch"]}
                 </SelectItem>
               </SelectPopup>
             </Select>
