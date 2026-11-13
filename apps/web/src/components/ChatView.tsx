@@ -26,6 +26,7 @@ import {
 import { useLoadBalancedEnvironment } from "../hooks/useLoadBalancedEnvironment";
 import { useScratchProject } from "../hooks/useScratchProject";
 import { useStableCallback } from "../hooks/useStableCallback";
+import { useFileMetadata } from "../hooks/useFileMetadata";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import {
@@ -316,6 +317,7 @@ import {
   PaperclipIcon,
   ChevronDownIcon,
   DownloadIcon,
+  FolderXIcon,
   GitBranchIcon,
   ShieldQuestionIcon,
   TargetIcon,
@@ -393,6 +395,8 @@ import {
 } from "../composerDraftStore";
 import {
   formatTerminalContextLabel,
+  parseShellCommandPrompt,
+  shellCommandContextSelection,
   type TerminalContextDraft,
   type TerminalContextSelection,
 } from "../lib/terminalContext";
@@ -1699,6 +1703,9 @@ export default function ChatView(props: ChatViewProps) {
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
+  const runTerminalCommand = useAtomCommand(terminalEnvironment.runCommand, {
+    reportFailure: false,
+  });
   const canWriteSourceControl = useEnvironmentScope(environmentId, AuthSourceControlWriteScope);
   const switchGitRef = useAtomCommand(vcsEnvironment.switchRef, { reportFailure: false });
   const setThreadRuntimeMode = useOrchestrationCommand(threadEnvironment.setRuntimeMode, {
@@ -1886,6 +1893,9 @@ export default function ChatView(props: ChatViewProps) {
     return draft ? composerDraftHasUserContent({ ...draft, prompt: "" }) : false;
   });
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
+  const addComposerDraftTerminalContext = useComposerDraftStore(
+    (store) => store.addTerminalContext,
+  );
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const addComposerDraftFiles = useComposerDraftStore((store) => store.addFiles);
   const setComposerDraftTerminalContexts = useComposerDraftStore(
@@ -6653,6 +6663,57 @@ export default function ChatView(props: ChatViewProps) {
   const closeExpandedImageStable = useStableCallback(closeExpandedImage);
 
   const activeWorktreePath = activeThread?.worktreePath ?? null;
+  // A worktree deleted outside T3 leaves the thread unable to start a provider session, so offer
+  // to continue in the project checkout instead. Null metadata means the path is gone.
+  // An offline environment also answers null, so only ask while it is reachable.
+  const worktreeMetadata = useFileMetadata(
+    isServerThread && !activeEnvironmentUnavailable ? environmentId : null,
+    activeWorktreePath ?? "",
+  );
+  const missingWorktreePath =
+    activeWorktreePath !== null && worktreeMetadata === null ? activeWorktreePath : null;
+  const [isLeavingMissingWorktree, setIsLeavingMissingWorktree] = useState(false);
+  const leaveMissingWorktree = async () => {
+    if (!activeThread || missingWorktreePath === null) return;
+    setIsLeavingMissingWorktree(true);
+    const result = await updateThreadMetadata({
+      environmentId,
+      input: { threadId: activeThread.id, worktreePath: null },
+    });
+    setIsLeavingMissingWorktree(false);
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not move the thread to the project folder",
+          description: chatActionErrorMessage(squashAtomCommandFailure(result)),
+        }),
+      );
+    }
+  };
+  const leaveMissingWorktreeStable = useStableCallback(leaveMissingWorktree);
+  const missingWorktreeBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    if (missingWorktreePath === null) return null;
+    return {
+      id: `missing-worktree:${missingWorktreePath}`,
+      variant: "warning",
+      icon: <FolderXIcon />,
+      title: "This thread's folder no longer exists",
+      description: activeProject
+        ? `${missingWorktreePath} is gone. Continue in ${activeProject.workspaceRoot} to keep working.`
+        : `${missingWorktreePath} is gone.`,
+      actions: activeProject ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={isLeavingMissingWorktree}
+          onClick={() => void leaveMissingWorktreeStable()}
+        >
+          {isLeavingMissingWorktree ? "Moving..." : "Continue in project folder"}
+        </Button>
+      ) : undefined,
+    };
+  }, [activeProject, isLeavingMissingWorktree, leaveMissingWorktreeStable, missingWorktreePath]);
   const derivedEnvMode: DraftThreadEnvMode = resolveEffectiveEnvMode({
     activeWorktreePath,
     hasServerThread: isServerThread,
@@ -7480,13 +7541,15 @@ export default function ChatView(props: ChatViewProps) {
       backgroundWorkBannerItem,
     ].filter((item) => item !== null);
     const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
-    const projectCloneItems = projectCloneBannerItem === null ? [] : [projectCloneBannerItem];
+    const workspaceBannerItems = [projectCloneBannerItem, missingWorktreeBannerItem].filter(
+      (item) => item !== null,
+    );
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
       return [
         ...feedbackBannerItems,
         ...limitRecoveryItems,
         ...usageLimitsItems,
-        ...projectCloneItems,
+        ...workspaceBannerItems,
         ...systemComposerBannerItems,
         ...backgroundWorkItems,
       ];
@@ -7495,7 +7558,7 @@ export default function ChatView(props: ChatViewProps) {
       ...feedbackBannerItems,
       ...limitRecoveryItems,
       ...usageLimitsItems,
-      ...projectCloneItems,
+      ...workspaceBannerItems,
       ...systemComposerBannerItems,
       ...backgroundWorkItems,
       {
@@ -7551,6 +7614,7 @@ export default function ChatView(props: ChatViewProps) {
     childInputBannerItem,
     goalBannerItem,
     localCheckoutBranchMismatch,
+    missingWorktreeBannerItem,
     projectCloneBannerItem,
     showBranchMismatchBanner,
     systemComposerBannerItems,
@@ -8380,6 +8444,65 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
+  // `!cmd` runs on the environment and lands in the draft as terminal context, so the agent sees
+  // command and output with the next message without being asked to answer it.
+  const runShellCommandFromComposer = async ({
+    command,
+    remainingPrompt,
+  }: {
+    command: string;
+    remainingPrompt: string;
+  }) => {
+    const cwd = activeWorktreePath ?? activeProject?.workspaceRoot ?? null;
+    if (!activeThread || cwd === null) return;
+    if (activeEnvironmentUnavailable) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: "Not connected: command not run",
+          description: "Try again once the environment is connected.",
+        }),
+      );
+      return;
+    }
+    if (!readEnvironmentScope(environmentId, AuthTerminalOperateScope)) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: "Shell commands need terminal access",
+          description: "This connection may not run commands on the environment.",
+        }),
+      );
+      return;
+    }
+    const target = composerDraftTarget;
+    const threadId = activeThread.id;
+    promptRef.current = remainingPrompt;
+    setComposerDraftPrompt(target, remainingPrompt);
+    composerRef.current?.resetCursorState();
+    const toastId = toastManager.add({ type: "loading", title: `Running ${command}` });
+    const result = await runTerminalCommand({ environmentId, input: { cwd, command } });
+    if (result._tag === "Failure") {
+      if (isAtomCommandInterrupted(result)) {
+        toastManager.close(toastId);
+        return;
+      }
+      toastManager.update(toastId, {
+        type: "error",
+        title: `Could not run ${command}`,
+        description: chatActionErrorMessage(squashAtomCommandFailure(result)),
+      });
+      return;
+    }
+    toastManager.close(toastId);
+    addComposerDraftTerminalContext(target, {
+      ...shellCommandContextSelection(command, result.value),
+      id: randomUUID(),
+      threadId,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
   const onSend = async (
     e?: { preventDefault: () => void },
     dispatchMode: ComposerDispatchMode = "auto",
@@ -8402,6 +8525,14 @@ export default function ChatView(props: ChatViewProps) {
         setComposerDraftPrompt(composerDraftTarget, "");
         composerRef.current?.resetCursorState();
       }
+      return;
+    }
+    const shellCommand =
+      directAnnotation || editingQueuedRun !== null
+        ? null
+        : parseShellCommandPrompt(promptRef.current);
+    if (shellCommand !== null) {
+      await runShellCommandFromComposer(shellCommand);
       return;
     }
 

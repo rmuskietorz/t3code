@@ -180,6 +180,7 @@ import * as ServerSettings from "./serverSettings.ts";
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
+import * as TerminalCommandRunner from "./terminal/CommandRunner.ts";
 import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
@@ -1240,6 +1241,7 @@ const layerWsRpc = (
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
+      const terminalCommandRunner = yield* TerminalCommandRunner.TerminalCommandRunner;
       const previewManager = yield* PreviewManager.PreviewManager;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
@@ -2859,6 +2861,7 @@ const layerWsRpc = (
         [WS_METHODS.terminalClear]: (input) => terminalManager.clear(input),
         [WS_METHODS.terminalRestart]: (input) => terminalManager.restart(input),
         [WS_METHODS.terminalClose]: (input) => terminalManager.close(input),
+        [WS_METHODS.terminalRunCommand]: (input) => terminalCommandRunner.run(input),
         [WS_METHODS.terminalObserve]: (input) =>
           Stream.callback<TerminalAttachStreamEvent, TerminalError>((queue) =>
             Effect.acquireRelease(

@@ -62,6 +62,7 @@ import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceRegistryHydration.ts";
 import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
+import * as TerminalCommandRunner from "./terminal/CommandRunner.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
@@ -401,10 +402,13 @@ const layerCheckpointStore = CheckpointStore.layer.pipe(Layer.provide(layerVcsDr
 
 const layerPortScanner = PortScanner.layer.pipe(Layer.provide(ProcessRunner.layer));
 
-const layerTerminal = TerminalManager.layer.pipe(
-  Layer.provide(layerPtyAdapter),
-  Layer.provide(layerPortScanner),
-  Layer.provide(layerNativeTelemetry),
+const layerTerminal = Layer.merge(
+  TerminalManager.layer.pipe(
+    Layer.provide(layerPtyAdapter),
+    Layer.provide(layerPortScanner),
+    Layer.provide(layerNativeTelemetry),
+  ),
+  TerminalCommandRunner.layer,
 );
 
 const layerPreview = Layer.empty.pipe(

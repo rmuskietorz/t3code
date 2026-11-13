@@ -92,6 +92,22 @@ export const TerminalCloseInput = Schema.Struct({
 });
 export type TerminalCloseInput = typeof TerminalCloseInput.Type;
 
+/** A one-shot shell command whose output goes to the agent as context, like `!cmd` in the Claude CLI. */
+export const TerminalRunCommandInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  command: TrimmedNonEmptyStringSchema.check(Schema.isMaxLength(8_192)),
+});
+export type TerminalRunCommandInput = typeof TerminalRunCommandInput.Type;
+
+export const TerminalRunCommandResult = Schema.Struct({
+  /** stdout followed by stderr. */
+  output: Schema.String,
+  exitCode: Schema.NullOr(Schema.Int),
+  timedOut: Schema.Boolean,
+  truncated: Schema.Boolean,
+});
+export type TerminalRunCommandResult = typeof TerminalRunCommandResult.Type;
+
 export const TerminalSessionStatus = Schema.Literals(["starting", "running", "exited", "error"]);
 export type TerminalSessionStatus = typeof TerminalSessionStatus.Type;
 
@@ -361,6 +377,17 @@ export class TerminalResizeError extends Schema.TaggedError<TerminalResizeError>
 ) {
   override get message() {
     return `Failed to resize terminal for thread: ${this.threadId}, terminal: ${this.terminalId}, PID: ${this.terminalPid} to ${this.cols}x${this.rows}`;
+  }
+}
+
+export class TerminalCommandError extends Schema.TaggedError<TerminalCommandError>()(
+  "TerminalCommandError",
+  {
+    cause: Schema.Defect(),
+  },
+) {
+  override get message() {
+    return "The command could not be started.";
   }
 }
 

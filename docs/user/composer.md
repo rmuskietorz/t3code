@@ -49,6 +49,14 @@ also send files to T3 Code through another app's system share sheet.
 
 See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
 
+## Run a shell command
+
+On web and desktop, send `!` followed by a command, such as `!git status`, to run it in the
+thread's folder on the environment. The command and its output land in the composer as terminal
+context, so the agent sees them with your next message; the agent does not answer the command
+itself. Commands time out after two minutes, cannot read input, and need terminal access on the
+connection.
+
 ## Send while the agent is working
 
 On web and desktop, choose **Settings → General → Follow-up behavior** to queue
