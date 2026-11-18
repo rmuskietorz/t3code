@@ -295,6 +295,26 @@ export function sortPinnedThreadsByOrderKey<
   return [...keyed, ...keyless];
 }
 
+/** Pinned threads lead in their pinned order; the rest keep the chosen sort. */
+export function sortThreadsPinnedFirst<
+  T extends ThreadSortInput & {
+    readonly id: string;
+    readonly pinnedAt?: string | null | undefined;
+    readonly pinOrderKey?: string | null | undefined;
+    readonly environmentId?: string | undefined;
+  },
+>(threads: readonly T[], sortOrder: SidebarThreadSortOrder): T[] {
+  const pinned = threads.filter((thread) => thread.pinnedAt != null);
+  if (pinned.length === 0) return sortThreads(threads, sortOrder);
+  return [
+    ...sortPinnedThreadsByOrderKey(pinned),
+    ...sortThreads(
+      threads.filter((thread) => thread.pinnedAt == null),
+      sortOrder,
+    ),
+  ];
+}
+
 export function sortActiveThreadsByOrderKey<
   T extends {
     readonly id: string;

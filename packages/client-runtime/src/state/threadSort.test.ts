@@ -13,6 +13,7 @@ import {
   sortPinnedThreadsByOrderKey,
   sortSettledThreads,
   sortThreads,
+  sortThreadsPinnedFirst,
   type SettledThreadTimestampInput,
   type ThreadSortInput,
 } from "./threadSort.ts";
@@ -369,6 +370,39 @@ describe("sortPinnedThreadsByOrderKey", () => {
       },
     ]);
     expect(sorted.map((thread) => thread.environmentId)).toEqual(["env-a", "env-b"]);
+  });
+});
+
+describe("sortThreadsPinnedFirst", () => {
+  it("keeps an old pinned thread above newer unpinned ones", () => {
+    const thread = (id: string, createdAt: string, pin?: { at: string; key: string }) => ({
+      id,
+      createdAt,
+      updatedAt: createdAt,
+      pinnedAt: pin?.at ?? null,
+      pinOrderKey: pin?.key ?? null,
+    });
+    const sorted = sortThreadsPinnedFirst(
+      [
+        thread("recent", "2026-03-09T12:00:00.000Z"),
+        thread("old-pinned-second", "2026-01-01T10:00:00.000Z", {
+          at: "2026-03-01T00:00:00.000Z",
+          key: "n",
+        }),
+        thread("older", "2026-03-01T12:00:00.000Z"),
+        thread("old-pinned-first", "2025-12-01T10:00:00.000Z", {
+          at: "2026-03-02T00:00:00.000Z",
+          key: "m",
+        }),
+      ],
+      "created_at",
+    );
+    expect(sorted.map((entry) => entry.id)).toEqual([
+      "old-pinned-first",
+      "old-pinned-second",
+      "recent",
+      "older",
+    ]);
   });
 });
 

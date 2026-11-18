@@ -8,6 +8,7 @@ import {
   ChevronRightIcon,
   FolderPlusIcon,
   Globe2Icon,
+  PinIcon,
   SearchIcon,
   SquarePenIcon,
   TriangleAlertIcon,
@@ -88,6 +89,7 @@ import { isMacPlatform } from "../lib/utils";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import {
+  readEnvironmentSupportsPinning,
   readThreadShell,
   useProjects,
   useThreadShells,
@@ -232,7 +234,7 @@ import {
   useThreadJumpHintVisibility,
   ThreadStatusPill,
 } from "./Sidebar.logic";
-import { sortThreads } from "../lib/threadSort";
+import { sortThreadsPinnedFirst } from "../lib/threadSort";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIsMobile } from "~/hooks/useMediaQuery";
@@ -807,6 +809,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             </a>
           ) : null}
           {threadStatus && <ThreadStatusLabel status={threadStatus} />}
+          {thread.pinnedAt != null ? (
+            <PinIcon aria-label="Pinned" className="size-3 shrink-0 text-muted-foreground" />
+          ) : null}
           {canOperateThread && renamingThreadKey === threadKey ? (
             <input
               ref={handleRenameInputRef}
@@ -1162,6 +1167,8 @@ interface SidebarProjectItemProps {
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
   markThreadUnread: ReturnType<typeof useThreadActions>["markThreadUnread"];
+  pinThread: ReturnType<typeof useThreadActions>["pinThread"];
+  unpinThread: ReturnType<typeof useThreadActions>["unpinThread"];
   reloadThreadFromSession: ReturnType<typeof useThreadActions>["reloadThreadFromSession"];
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
@@ -1185,6 +1192,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     archiveThread,
     deleteThread,
     markThreadUnread,
+    pinThread,
+    unpinThread,
     reloadThreadFromSession,
     threadJumpLabelByKey,
     attachThreadListAutoAnimateRef,
@@ -1376,7 +1385,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         },
       });
     };
-    const visibleProjectThreads = sortThreads(
+    const visibleProjectThreads = sortThreadsPinnedFirst(
       projectThreads.filter(
         (thread) => thread.archivedAt === null && !isSidebarSubagentThread(thread),
       ),
@@ -2381,6 +2390,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           ...(thread.branch
             ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
             : []),
+          ...(readEnvironmentSupportsPinning(thread.environmentId)
+            ? [
+                thread.pinnedAt != null
+                  ? { id: "unpin", label: "Unpin thread", icon: "pin-off" }
+                  : { id: "pin", label: "Pin thread", icon: "pin" },
+              ]
+            : []),
           { id: "rename", label: "Rename thread", disabled: !canOperateThread },
           { id: "mark-unread", label: "Mark unread" },
           { id: "copy-path", label: "Copy Path" },
@@ -2456,6 +2472,20 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         markThreadUnread(threadRef);
         return;
       }
+      if (clicked === "pin" || clicked === "unpin") {
+        const result = await (clicked === "pin" ? pinThread(threadRef) : unpinThread(threadRef));
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: clicked === "pin" ? "Failed to pin thread" : "Failed to unpin thread",
+              description: error instanceof Error ? error.message : "An error occurred.",
+            }),
+          );
+        }
+        return;
+      }
       if (clicked === "reload-from-session") {
         await reloadThreadFromSession(threadRef);
         return;
@@ -2513,6 +2543,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       handleNewThread,
       isMobile,
       markThreadUnread,
+      pinThread,
+      unpinThread,
       reloadThreadFromSession,
       memberProjectByScopedKey,
       project.projectKey,
@@ -3053,6 +3085,8 @@ interface SidebarProjectsContentProps {
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
   markThreadUnread: ReturnType<typeof useThreadActions>["markThreadUnread"];
+  pinThread: ReturnType<typeof useThreadActions>["pinThread"];
+  unpinThread: ReturnType<typeof useThreadActions>["unpinThread"];
   reloadThreadFromSession: ReturnType<typeof useThreadActions>["reloadThreadFromSession"];
   sortedProjects: readonly SidebarProjectSnapshot[];
   expandedThreadListsByProject: ReadonlySet<string>;
@@ -3102,6 +3136,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     archiveThread,
     deleteThread,
     markThreadUnread,
+    pinThread,
+    unpinThread,
     reloadThreadFromSession,
     sortedProjects,
     expandedThreadListsByProject,
@@ -3165,6 +3201,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 archiveThread={archiveThread}
                 deleteThread={deleteThread}
                 markThreadUnread={markThreadUnread}
+                pinThread={pinThread}
+                unpinThread={unpinThread}
                 reloadThreadFromSession={reloadThreadFromSession}
                 threadJumpLabelByKey={threadJumpLabelByKey}
                 attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
@@ -3195,6 +3233,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           archiveThread={archiveThread}
           deleteThread={deleteThread}
           markThreadUnread={markThreadUnread}
+          pinThread={pinThread}
+          unpinThread={unpinThread}
           reloadThreadFromSession={reloadThreadFromSession}
           threadJumpLabelByKey={threadJumpLabelByKey}
           attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
@@ -3378,8 +3418,14 @@ export default function LegacySidebar() {
   const sidebarThreadPreviewCount = useClientSettings((s) => s.sidebarThreadPreviewCount);
   const updateSettings = useUpdateClientSettings();
   const handleNewThread = useNewThreadHandler();
-  const { archiveThread, deleteThread, markThreadUnread, reloadThreadFromSession } =
-    useThreadActions();
+  const {
+    archiveThread,
+    deleteThread,
+    markThreadUnread,
+    pinThread,
+    unpinThread,
+    reloadThreadFromSession,
+  } = useThreadActions();
   const { isMobile, setOpenMobile } = useSidebar();
   const routeTarget = useParams({
     strict: false,
@@ -3786,7 +3832,7 @@ export default function LegacySidebar() {
   const visibleSidebarThreadKeys = useMemo(
     () =>
       visibleSortedProjects.flatMap((project) => {
-        const projectThreads = sortThreads(
+        const projectThreads = sortThreadsPinnedFirst(
           (threadsByProjectKey.get(project.projectKey) ?? []).filter(
             (thread) => thread.archivedAt === null && !isSidebarSubagentThread(thread),
           ),
@@ -4161,6 +4207,8 @@ export default function LegacySidebar() {
         archiveThread={archiveThread}
         deleteThread={deleteThread}
         markThreadUnread={markThreadUnread}
+        pinThread={pinThread}
+        unpinThread={unpinThread}
         reloadThreadFromSession={reloadThreadFromSession}
         sortedProjects={sortedProjects}
         expandedThreadListsByProject={expandedThreadListsByProject}
