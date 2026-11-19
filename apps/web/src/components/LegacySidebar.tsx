@@ -1,6 +1,6 @@
 import { readSplitViewHost } from "~/splitViewHost";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
-import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
+import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
 import { Spinner } from "~/components/ui/spinner";
 import {
   ArchiveIcon,
@@ -15,17 +15,15 @@ import {
 } from "lucide-react";
 import {
   ChangeRequestStatusIcon,
+  type PrStatusIndicator,
   prStatusIndicator,
-  PrStatusTooltipContent,
   ThreadTerminalStatusButton,
-  ThreadStatusLabel,
   ThreadWorktreeIndicator,
   useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { useAtomValue } from "@effect/atom-react";
-import { autoAnimate } from "@formkit/auto-animate";
 import React, { useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
 import { useShallow } from "zustand/react/shallow";
@@ -71,17 +69,10 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useNavigate, useParams, useRouter } from "@tanstack/react-router";
-import {
-  MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
-  MIN_SIDEBAR_THREAD_PREVIEW_COUNT,
-  type SidebarProjectSortOrder,
-  type SidebarThreadPreviewCount,
-  type SidebarThreadSortOrder,
-} from "@t3tools/contracts/settings";
-import { isDesktopLocalConnectionTarget, isWslConnectionTarget } from "../connection/desktopLocal";
+import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
+import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { isElectron } from "../env";
-import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { releaseProjectDraftUploads } from "../lib/composerDraftUploads";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -89,8 +80,9 @@ import { isMacPlatform } from "../lib/utils";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import {
-  readEnvironmentSupportsPinning,
+  readEnvironmentServerConfigLoaded,
   readThreadShell,
+  useDelegatedUnderParent,
   useProjects,
   useThreadShells,
   useThreadShellsForProjectRefs,
@@ -101,10 +93,8 @@ import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useThreadDiscoveredPorts } from "../portDiscoveryState";
 import { openDiscoveredPort } from "./preview/openDiscoveredPort";
 import { useAtomCommand } from "../state/use-atom-command";
-import {
-  ORCHESTRATION_OPERATE_DENIED_MESSAGE,
-  useOrchestrationCommand,
-} from "../state/use-orchestration-command";
+import { useOrchestrationCommand } from "../state/use-orchestration-command";
+import { useProjectGroupUpdate } from "../hooks/useProjectGroupUpdate";
 import { previewEnvironment } from "../state/preview";
 import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
 import {
@@ -186,12 +176,10 @@ import {
   type CustomProjectGroupSection,
 } from "@t3tools/client-runtime/state/custom-project-groups";
 import {
-  useCustomProjectGroupActions,
+  customProjectGroupActions,
   useCustomProjectGroups,
   useCustomProjectGroupsEnabled,
 } from "~/hooks/useCustomProjectGroups";
-import { useArchivedProjectActions, useArchivedProjects } from "~/hooks/useArchivedProjects";
-import { filterArchivedSidebarProjects } from "~/archivedProjects";
 import {
   type SidebarBulkExpansionAction,
   useSidebarBulkExpansionHandler,
@@ -213,40 +201,48 @@ import {
 } from "../threadSelectionStore";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import {
-  archiveSelectedThreadEntries,
-  buildMultiSelectThreadContextMenuItems,
   deleteSelectedThreadEntries,
-  getSidebarThreadIdsToPrewarm,
+  filterSidebarV2VisibleThreads,
   resolveAdjacentThreadId,
-  isContextMenuPointerDown,
   isSidebarNestedLinkClick,
-  isSidebarSubagentThread,
   isTrailingDoubleClick,
-  resolveProjectStatusIndicator,
-  resolveThreadRowClassName,
   resolveThreadLastVisitedAt,
   resolveThreadStatusPill,
   orderItemsByPreferredIds,
-  shouldClearThreadSelectionOnMouseDown,
   sortCustomProjectGroupItems,
-  sortProjectsForSidebar,
   useSidebarRowSubscriptionLease,
-  useThreadJumpHintVisibility,
-  ThreadStatusPill,
+  type ThreadStatusPill,
 } from "./Sidebar.logic";
-import { sortThreadsPinnedFirst } from "../lib/threadSort";
+import {
+  archiveSelectedThreadEntries,
+  buildMultiSelectThreadContextMenuItems,
+  deriveProjectGroupingOverrideKey,
+  getSidebarThreadIdsToPrewarm,
+  isContextMenuPointerDown,
+  isWslConnectionTarget,
+  MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
+  MIN_SIDEBAR_THREAD_PREVIEW_COUNT,
+  ORCHESTRATION_OPERATE_DENIED_MESSAGE,
+  resolveProjectStatusIndicator,
+  shouldClearThreadSelectionOnMouseDown,
+  sortProjectsForSidebar,
+  type SidebarThreadPreviewCount,
+  useIsMobile,
+  useSidebarThreadPreviewCount,
+  useTerminalFocus,
+  useThreadJumpHintVisibility,
+} from "./LegacySidebar.logic";
+import { sortThreadsPinnedFirst } from "@t3tools/client-runtime/state/thread-sort";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import { useIsMobile } from "~/hooks/useMediaQuery";
 import { CommandDialogTrigger } from "./ui/command";
-import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
+import { updateClientSettings, useClientSettings } from "~/hooks/useSettings";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import {
   derivePhysicalProjectKey,
-  deriveProjectGroupingOverrideKey,
   getProjectOrderKey,
   selectProjectGroupingSettings,
-} from "../logicalProject";
+} from "@t3tools/client-runtime/state/project-grouping";
 import type { SidebarThreadSummary } from "../types";
 import {
   buildPhysicalToLogicalProjectKeyMap,
@@ -260,10 +256,6 @@ const SIDEBAR_THREAD_SORT_LABELS: Record<SidebarThreadSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
 };
-const SIDEBAR_LIST_ANIMATION_OPTIONS = {
-  duration: 180,
-  easing: "ease-out",
-} as const;
 const EMPTY_THREAD_JUMP_LABELS = new Map<string, string>();
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
@@ -276,6 +268,69 @@ const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
 function SidebarThreadDetailPrewarmer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   useEnvironmentThread(threadRef.environmentId, threadRef.threadId);
   return null;
+}
+
+function PrStatusTooltipContent({ status }: { status: PrStatusIndicator }) {
+  return (
+    <span className="flex max-w-[min(34rem,calc(100vw-2rem))] items-stretch overflow-hidden whitespace-nowrap">
+      <span className="shrink-0 pr-2 font-medium">{status.tooltipLead}</span>
+      <span className="min-h-4 shrink-0 border-border/70 border-l" aria-hidden="true" />
+      <span className="min-w-0 truncate pl-2">{status.tooltipTitle}</span>
+    </span>
+  );
+}
+
+function ThreadStatusLabel({
+  status,
+  compact = false,
+}: {
+  status: ThreadStatusPill;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span
+              role="img"
+              aria-label={status.label}
+              className={`inline-flex size-3.5 shrink-0 items-center justify-center ${status.colorClass}`}
+            />
+          }
+        >
+          <span
+            className={`size-[9px] rounded-full ${status.dotClass} ${
+              status.pulse ? "motion-safe:animate-status-pulse" : ""
+            }`}
+          />
+        </TooltipTrigger>
+        <TooltipPopup side="top">{status.label}</TooltipPopup>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            role="img"
+            aria-label={status.label}
+            className={`inline-flex items-center gap-1 text-3xs ${status.colorClass}`}
+          />
+        }
+      >
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${
+            status.pulse ? "motion-safe:animate-status-pulse" : ""
+          }`}
+        />
+        <span className="hidden md:inline">{status.label}</span>
+      </TooltipTrigger>
+      <TooltipPopup side="top">{status.label}</TooltipPopup>
+    </Tooltip>
+  );
 }
 
 function clampSidebarThreadPreviewCount(value: number): SidebarThreadPreviewCount {
@@ -999,7 +1054,6 @@ interface SidebarProjectThreadListProps {
   confirmingArchiveThreadKey: string | null;
   setConfirmingArchiveThreadKey: React.Dispatch<React.SetStateAction<string | null>>;
   confirmArchiveButtonRefs: React.RefObject<Map<string, HTMLButtonElement>>;
-  attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   handleThreadClick: (
     event: React.MouseEvent,
     threadRef: ScopedThreadRef,
@@ -1055,7 +1109,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     confirmingArchiveThreadKey,
     setConfirmingArchiveThreadKey,
     confirmArchiveButtonRefs,
-    attachThreadListAutoAnimateRef,
     handleThreadClick,
     navigateToThread,
     onFileDropThreads,
@@ -1073,10 +1126,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   const showLessButtonRender = useMemo(() => <button type="button" />, []);
 
   return (
-    <SidebarMenuSub
-      ref={attachThreadListAutoAnimateRef}
-      className="mx-0.5 my-0 w-full translate-x-0 overflow-hidden sm:mx-1"
-    >
+    <SidebarMenuSub className="mx-0.5 my-0 w-full translate-x-0 overflow-hidden sm:mx-1">
       {shouldShowThreadPanel && showEmptyThreadState ? (
         <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
           <div
@@ -1171,7 +1221,6 @@ interface SidebarProjectItemProps {
   unpinThread: ReturnType<typeof useThreadActions>["unpinThread"];
   reloadThreadFromSession: ReturnType<typeof useThreadActions>["reloadThreadFromSession"];
   threadJumpLabelByKey: ReadonlyMap<string, string>;
-  attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
   collapseThreadListForProject: (projectKey: string) => void;
   dragInProgressRef: React.RefObject<boolean>;
@@ -1196,7 +1245,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     unpinThread,
     reloadThreadFromSession,
     threadJumpLabelByKey,
-    attachThreadListAutoAnimateRef,
     expandThreadListForProject,
     collapseThreadListForProject,
     dragInProgressRef,
@@ -1229,10 +1277,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
-  const updateSettings = useUpdateClientSettings();
-  const sidebarThreadPreviewCount = useClientSettings<SidebarThreadPreviewCount>(
-    (settings) => settings.sidebarThreadPreviewCount,
-  );
+  const updateSettings = updateClientSettings;
+  const [sidebarThreadPreviewCount] = useSidebarThreadPreviewCount();
+  // Delegated tasks the parent thread already shows stay out of the project lists.
+  const delegatedUnderParent = useDelegatedUnderParent();
   const router = useRouter();
   const queuePendingFileDrop = useSidebarPendingFileDropStore((s) => s.queuePendingFileDrop);
   const clearPendingFileDrop = useSidebarPendingFileDropStore((s) => s.clearPendingFileDrop);
@@ -1243,8 +1291,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const customProjectGroupAssignments = useClientSettings(
     (settings) => settings.sidebarCustomProjectGroupAssignments,
   );
-  const customProjectGroupActions = useCustomProjectGroupActions();
-  const archivedProjectActions = useArchivedProjectActions();
+  const { updateProjectGroup, canOrganizeProjectGroup } = useProjectGroupUpdate();
   const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -1386,9 +1433,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       });
     };
     const visibleProjectThreads = sortThreadsPinnedFirst(
-      projectThreads.filter(
-        (thread) => thread.archivedAt === null && !isSidebarSubagentThread(thread),
-      ),
+      filterSidebarV2VisibleThreads(projectThreads, null, delegatedUnderParent),
       threadSortOrder,
     );
     const projectStatus = resolveProjectStatusIndicator(
@@ -1401,7 +1446,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       projectStatus,
       visibleProjectThreads,
     };
-  }, [projectThreads, threadLastVisitedAts, threadSortOrder]);
+  }, [delegatedUnderParent, projectThreads, threadLastVisitedAts, threadSortOrder]);
   const pinnedCollapsedThread = useMemo(() => {
     const activeThreadKey = activeRouteThreadKey ?? undefined;
     if (!activeThreadKey || projectExpanded) {
@@ -1833,8 +1878,17 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           ],
         };
 
+        const canArchiveProject =
+          canOrganizeProjectGroup(project.memberProjects) &&
+          project.memberProjects.every((member) =>
+            readEnvironmentScope(member.environmentId, AuthOrchestrationOperateScope),
+          );
         actionHandlers.set("archive-project", () => {
-          void archivedProjectActions.archive(memberKeys);
+          void updateProjectGroup(
+            project.memberProjects,
+            { archived: true },
+            "Failed to archive project",
+          );
         });
         actionHandlers.set("project-settings", () => {
           if (isMobile) setOpenMobile(false);
@@ -1853,7 +1907,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             buildTargetedItem("grouping", "Group into..."),
             ...(customProjectGroupsEnabled ? [moveToGroupItem] : []),
             buildTargetedItem("copy-path", "Copy Path"),
-            { id: "archive-project", label: "Archive project", icon: "archive" },
+            ...(canArchiveProject
+              ? [{ id: "archive-project", label: "Archive project", icon: "archive" }]
+              : []),
             { id: "project-settings", label: "Project settings", icon: "settings" },
             buildTargetedItem("delete", "Remove", {
               destructive: true,
@@ -1875,7 +1931,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       })();
     },
     [
-      archivedProjectActions,
+      canOrganizeProjectGroup,
       copyPathToClipboard,
       customProjectGroupActions,
       customProjectGroupAssignments,
@@ -1891,6 +1947,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       router,
       setOpenMobile,
       suppressProjectClickForContextMenuRef,
+      updateProjectGroup,
     ],
   );
 
@@ -2390,7 +2447,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           ...(thread.branch
             ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
             : []),
-          ...(readEnvironmentSupportsPinning(thread.environmentId)
+          ...(readEnvironmentServerConfigLoaded(thread.environmentId)
             ? [
                 thread.pinnedAt != null
                   ? { id: "unpin", label: "Unpin thread", icon: "pin-off" }
@@ -2680,7 +2737,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         confirmingArchiveThreadKey={confirmingArchiveThreadKey}
         setConfirmingArchiveThreadKey={setConfirmingArchiveThreadKey}
         confirmArchiveButtonRefs={confirmArchiveButtonRefs}
-        attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
         handleThreadClick={handleThreadClick}
         navigateToThread={navigateToThread}
         onFileDropThreads={handleThreadFileDrop}
@@ -3073,7 +3129,7 @@ interface SidebarProjectsContentProps {
   projectSortOrder: SidebarProjectSortOrder;
   threadSortOrder: SidebarThreadSortOrder;
   threadPreviewCount: SidebarThreadPreviewCount;
-  updateSettings: ReturnType<typeof useUpdateClientSettings>;
+  updateSettings: typeof updateClientSettings;
   openAddProject: () => void;
   isProjectDragEnabled: boolean;
   projectDnDSensors: ReturnType<typeof useSensors>;
@@ -3096,13 +3152,11 @@ interface SidebarProjectsContentProps {
   newThreadShortcutLabel: string | null;
   commandPaletteShortcutLabel: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
-  attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
   collapseThreadListForProject: (projectKey: string) => void;
   dragInProgressRef: React.RefObject<boolean>;
   suppressProjectClickAfterDragRef: React.RefObject<boolean>;
   suppressProjectClickForContextMenuRef: React.RefObject<boolean>;
-  attachProjectListAutoAnimateRef: (node: HTMLElement | null) => void;
   projectsLength: number;
   /** `null` while custom project groups are off. */
   projectSections: ReadonlyArray<CustomProjectGroupSection<SidebarProjectSnapshot>> | null;
@@ -3147,13 +3201,11 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     newThreadShortcutLabel,
     commandPaletteShortcutLabel,
     threadJumpLabelByKey,
-    attachThreadListAutoAnimateRef,
     expandThreadListForProject,
     collapseThreadListForProject,
     dragInProgressRef,
     suppressProjectClickAfterDragRef,
     suppressProjectClickForContextMenuRef,
-    attachProjectListAutoAnimateRef,
     projectsLength,
     projectSections,
     projectGroupCollapsedById,
@@ -3173,12 +3225,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     },
     [updateSettings],
   );
-  const handleThreadPreviewCountChange = useCallback(
-    (count: SidebarThreadPreviewCount) => {
-      updateSettings({ sidebarThreadPreviewCount: count });
-    },
-    [updateSettings],
-  );
+  const [, handleThreadPreviewCountChange] = useSidebarThreadPreviewCount();
 
   const renderProjects = (projects: readonly SidebarProjectSnapshot[], reorderable: boolean) =>
     reorderable ? (
@@ -3205,7 +3252,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 unpinThread={unpinThread}
                 reloadThreadFromSession={reloadThreadFromSession}
                 threadJumpLabelByKey={threadJumpLabelByKey}
-                attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
                 expandThreadListForProject={expandThreadListForProject}
                 collapseThreadListForProject={collapseThreadListForProject}
                 dragInProgressRef={dragInProgressRef}
@@ -3237,7 +3283,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           unpinThread={unpinThread}
           reloadThreadFromSession={reloadThreadFromSession}
           threadJumpLabelByKey={threadJumpLabelByKey}
-          attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
           expandThreadListForProject={expandThreadListForProject}
           collapseThreadListForProject={collapseThreadListForProject}
           dragInProgressRef={dragInProgressRef}
@@ -3384,7 +3429,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             <SidebarMenu>{renderProjectSections()}</SidebarMenu>
           </DndContext>
         ) : (
-          <SidebarMenu ref={attachProjectListAutoAnimateRef}>{renderProjectSections()}</SidebarMenu>
+          <SidebarMenu>{renderProjectSections()}</SidebarMenu>
         )}
 
         {projectsLength === 0 && (
@@ -3407,7 +3452,6 @@ export default function LegacySidebar() {
   const customProjectGroupAssignments = useClientSettings(
     (settings) => settings.sidebarCustomProjectGroupAssignments,
   );
-  const customProjectGroupActions = useCustomProjectGroupActions();
   const { profile: sidebarProfile } = useSidebarProfile();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
@@ -3415,8 +3459,8 @@ export default function LegacySidebar() {
   const sidebarThreadSortOrder = useClientSettings((s) => s.sidebarThreadSortOrder);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
-  const sidebarThreadPreviewCount = useClientSettings((s) => s.sidebarThreadPreviewCount);
-  const updateSettings = useUpdateClientSettings();
+  const [sidebarThreadPreviewCount] = useSidebarThreadPreviewCount();
+  const updateSettings = updateClientSettings;
   const handleNewThread = useNewThreadHandler();
   const {
     archiveThread,
@@ -3463,6 +3507,7 @@ export default function LegacySidebar() {
   const platform = navigator.platform;
   const shortcutModifiers = useShortcutModifierState();
   const terminalFocused = useTerminalFocus();
+  const delegatedUnderParent = useDelegatedUnderParent();
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const environmentLabelById = useMemo(
@@ -3520,7 +3565,6 @@ export default function LegacySidebar() {
     [orderedProjects],
   );
 
-  const archivedProjects = useArchivedProjects();
   const sidebarProjects = useMemo<ReadonlyArray<SidebarProjectSnapshot>>(() => {
     const snapshots = buildSidebarProjectSnapshots({
       projects: orderedProjects,
@@ -3530,13 +3574,9 @@ export default function LegacySidebar() {
       isDesktopLocalEnvironment: (environmentId) => desktopLocalEnvironmentIds.has(environmentId),
       isWslEnvironment: (environmentId) => wslEnvironmentIds.has(environmentId),
     });
-    return filterArchivedSidebarProjects(
-      snapshots,
-      (project) => project.memberProjects,
-      archivedProjects,
-    );
+    // Archived projects leave the sidebar; Settings and the command palette bring them back.
+    return snapshots.filter((project) => !project.archived);
   }, [
-    archivedProjects,
     environmentLabelById,
     desktopLocalEnvironmentIds,
     wslEnvironmentIds,
@@ -3646,30 +3686,9 @@ export default function LegacySidebar() {
     dragInProgressRef.current = false;
   }, []);
 
-  const animatedProjectListsRef = useRef(new WeakSet<HTMLElement>());
-  const attachProjectListAutoAnimateRef = useCallback((node: HTMLElement | null) => {
-    if (!node || animatedProjectListsRef.current.has(node)) {
-      return;
-    }
-    autoAnimate(node, SIDEBAR_LIST_ANIMATION_OPTIONS);
-    animatedProjectListsRef.current.add(node);
-  }, []);
-
-  const animatedThreadListsRef = useRef(new WeakSet<HTMLElement>());
-  const attachThreadListAutoAnimateRef = useCallback((node: HTMLElement | null) => {
-    if (!node || animatedThreadListsRef.current.has(node)) {
-      return;
-    }
-    autoAnimate(node, SIDEBAR_LIST_ANIMATION_OPTIONS);
-    animatedThreadListsRef.current.add(node);
-  }, []);
-
   const visibleThreads = useMemo(
-    () =>
-      sidebarThreads.filter(
-        (thread) => thread.archivedAt === null && !isSidebarSubagentThread(thread),
-      ),
-    [sidebarThreads],
+    () => filterSidebarV2VisibleThreads(sidebarThreads, null, delegatedUnderParent),
+    [delegatedUnderParent, sidebarThreads],
   );
   const sortableThreads = useMemo(
     () =>
@@ -3833,8 +3852,10 @@ export default function LegacySidebar() {
     () =>
       visibleSortedProjects.flatMap((project) => {
         const projectThreads = sortThreadsPinnedFirst(
-          (threadsByProjectKey.get(project.projectKey) ?? []).filter(
-            (thread) => thread.archivedAt === null && !isSidebarSubagentThread(thread),
+          filterSidebarV2VisibleThreads(
+            threadsByProjectKey.get(project.projectKey) ?? [],
+            null,
+            delegatedUnderParent,
           ),
           sidebarThreadSortOrder,
         );
@@ -3867,6 +3888,7 @@ export default function LegacySidebar() {
         );
       }),
     [
+      delegatedUnderParent,
       sidebarThreadSortOrder,
       sidebarThreadPreviewCount,
       expandedThreadListsByProject,
@@ -4218,13 +4240,11 @@ export default function LegacySidebar() {
         newThreadShortcutLabel={newThreadShortcutLabel}
         commandPaletteShortcutLabel={commandPaletteShortcutLabel}
         threadJumpLabelByKey={visibleThreadJumpLabelByKey}
-        attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
         expandThreadListForProject={expandThreadListForProject}
         collapseThreadListForProject={collapseThreadListForProject}
         dragInProgressRef={dragInProgressRef}
         suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
         suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
-        attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
         projectsLength={projects.length}
         projectSections={projectSections}
         projectGroupCollapsedById={projectGroupCollapsedById}

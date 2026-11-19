@@ -7,7 +7,7 @@ import type {
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useCustomProjectGroupActions } from "../../hooks/useCustomProjectGroups";
+import { customProjectGroupActions } from "../../hooks/useCustomProjectGroups";
 import { readLocalApi } from "../../localApi";
 import { Button } from "../ui/button";
 import {
@@ -46,7 +46,7 @@ export function CustomProjectGroupHeader({
   sortable: boolean;
   globalProjectSortOrder: SidebarProjectSortOrder;
 }) {
-  const actions = useCustomProjectGroupActions();
+  const actions = customProjectGroupActions;
   const [renameDraft, setRenameDraft] = useState<string | null>(null);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isOver } =
     useSortable({

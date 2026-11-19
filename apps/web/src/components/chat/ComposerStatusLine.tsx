@@ -1,6 +1,6 @@
 import { Fragment, memo, type ReactNode } from "react";
 
-import type { ContextWindowSnapshot } from "../../lib/contextWindow";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 import { cn } from "../../lib/utils";
 
 /** A thin share-of-capacity bar, shared by the context and usage limit segments. */

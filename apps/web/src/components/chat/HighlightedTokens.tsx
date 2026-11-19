@@ -1,17 +1,13 @@
-import { use, useMemo, type CSSProperties } from "react";
+import { use, type CSSProperties } from "react";
+
+import {
+  withEmbeddedScripts,
+  type EmbeddedScript,
+  type SyntaxToken,
+} from "@t3tools/client-runtime/work-log/embedded-scripts";
 
 import { resolveDiffThemeName } from "../../lib/diffRendering";
-import type { EmbeddedScript } from "../../lib/embeddedScripts";
 import { getSyntaxHighlighterPromise } from "../../lib/syntaxHighlighting";
-
-interface SyntaxToken {
-  readonly content: string;
-  readonly offset: number;
-  readonly color?: string;
-  readonly fontStyle?: number;
-}
-
-type TokenLines = ReadonlyArray<ReadonlyArray<SyntaxToken>>;
 
 const NO_EMBEDDED_SCRIPTS: ReadonlyArray<EmbeddedScript> = [];
 
@@ -25,10 +21,7 @@ function syntaxTokenStyle(token: SyntaxToken): CSSProperties {
   };
 }
 
-/**
- * Suspends while the grammar loads; wrap it in Suspense with the plain text as
- * the fallback.
- */
+/** Suspends during grammar loading; use plain text as the Suspense fallback. */
 export function HighlightedTokens({
   code,
   language,
@@ -44,106 +37,46 @@ export function HighlightedTokens({
 }) {
   const highlighter = use(getSyntaxHighlighterPromise(language));
   for (const script of embedded) use(getSyntaxHighlighterPromise(script.language));
-  const lines = useMemo(() => {
-    const themeName = resolveDiffThemeName(theme);
-    const tokenize = (text: string, lang: string) =>
-      highlighter.codeToTokens(text, { lang, theme: themeName }).tokens;
-    return keyedLines(
-      code,
-      withEmbeddedScripts(code, tokenize(code, language), embedded, tokenize),
-    );
-  }, [code, embedded, highlighter, language, theme]);
+  const themeName = resolveDiffThemeName(theme);
+  const tokenize = (text: string, lang: string) =>
+    highlighter.codeToTokens(text, { lang, theme: themeName }).tokens;
+  const lines = keyedLines(
+    code,
+    withEmbeddedScripts(code, tokenize(code, language), embedded, tokenize),
+  );
 
-  return lines.map(({ key, tokens, ending }) => (
-    <span key={key}>
-      {wordClassName
-        ? wordsOf(tokens).map((part) =>
-            typeof part === "string" ? (
-              part
-            ) : (
-              <span key={part.key} className={wordClassName}>
-                {part.pieces.map((piece) => (
-                  <span key={piece.key} style={syntaxTokenStyle(piece.token)}>
-                    {piece.text}
+  // The compiler requires JSX to recognize this component; `use` alone does not suffice.
+  return (
+    <>
+      {lines.map(({ key, tokens, ending }) => (
+        <span key={key}>
+          {wordClassName
+            ? wordsOf(tokens).map((part) =>
+                typeof part === "string" ? (
+                  part
+                ) : (
+                  <span key={part.key} className={wordClassName}>
+                    {part.pieces.map((piece) => (
+                      <span key={piece.key} style={syntaxTokenStyle(piece.token)}>
+                        {piece.text}
+                      </span>
+                    ))}
                   </span>
-                ))}
-              </span>
-            ),
-          )
-        : tokens.map((token) => (
-            <span key={`${token.offset}:${token.content}`} style={syntaxTokenStyle(token)}>
-              {token.content}
-            </span>
-          ))}
-      {ending}
-    </span>
-  ));
+                ),
+              )
+            : tokens.map((token) => (
+                <span key={`${token.offset}:${token.content}`} style={syntaxTokenStyle(token)}>
+                  {token.content}
+                </span>
+              ))}
+          {ending}
+        </span>
+      ))}
+    </>
+  );
 }
 
-export function withEmbeddedScripts(
-  code: string,
-  lines: TokenLines,
-  embedded: ReadonlyArray<EmbeddedScript>,
-  tokenize: (text: string, language: string) => TokenLines,
-): TokenLines {
-  if (embedded.length === 0) return lines;
-  const styles = Array.from<SyntaxToken | undefined>({ length: code.length });
-  for (const token of lines.flat()) {
-    styles.fill(token, token.offset, token.offset + token.content.length);
-  }
-  for (const script of embedded) {
-    let scriptLines: TokenLines;
-    try {
-      scriptLines = tokenize(script.text, script.language);
-    } catch {
-      continue;
-    }
-    for (const token of scriptLines.flat()) {
-      if (token.content === "") continue;
-      const last = token.offset + token.content.length - 1;
-      styles.fill(token, script.starts[token.offset], script.ends[last]);
-    }
-  }
-  return restyledLines(code, styles);
-}
-
-function restyledLines(
-  code: string,
-  styles: ReadonlyArray<SyntaxToken | undefined>,
-): SyntaxToken[][] {
-  const lines: SyntaxToken[][] = [];
-  let start = 0;
-  for (const lineBreak of [...code.matchAll(/\r?\n/gu), undefined]) {
-    const end = lineBreak?.index ?? code.length;
-    const tokens: SyntaxToken[] = [];
-    for (let index = start; index < end;) {
-      const style = styles[index];
-      let next = index + 1;
-      while (
-        next < end &&
-        styles[next]?.color === style?.color &&
-        styles[next]?.fontStyle === style?.fontStyle
-      ) {
-        next += 1;
-      }
-      tokens.push({
-        content: code.slice(index, next),
-        offset: index,
-        ...(style?.color ? { color: style.color } : {}),
-        ...(style?.fontStyle ? { fontStyle: style.fontStyle } : {}),
-      });
-      index = next;
-    }
-    lines.push(tokens);
-    if (lineBreak) start = lineBreak.index + lineBreak[0].length;
-  }
-  return lines;
-}
-
-/**
- * Shiki drops `\n` and `\r\n` from tokens alike, so CRLF has to come back from
- * the source.
- */
+/** Restore CRLF from source; Shiki strips both line-ending forms. */
 export function keyedLines<Token extends SyntaxToken>(
   code: string,
   lines: ReadonlyArray<ReadonlyArray<Token>>,

@@ -8,11 +8,11 @@ import { ArrowDownIcon, ArrowUpIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
 import {
-  useCustomProjectGroupActions,
+  customProjectGroupActions,
   useCustomProjectGroups,
   useCustomProjectGroupsEnabled,
 } from "~/hooks/useCustomProjectGroups";
-import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
+import { updateClientSettings, useClientSettings } from "~/hooks/useSettings";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -29,7 +29,7 @@ const parsePathRules = (text: string) =>
     .filter((rule) => rule.length > 0);
 
 function PathRulesInput({ group }: { group: SidebarCustomProjectGroup }) {
-  const actions = useCustomProjectGroupActions();
+  const actions = customProjectGroupActions;
   const committed = group.pathRules.join("\n");
   const [draft, setDraft] = useState<string | null>(null);
   return (
@@ -59,7 +59,7 @@ function GroupSortOrderSelect({
   group: SidebarCustomProjectGroup;
   globalSortOrder: SidebarProjectSortOrder;
 }) {
-  const actions = useCustomProjectGroupActions();
+  const actions = customProjectGroupActions;
   const options = customProjectGroupSortOrderOptions(globalSortOrder);
   const current = group.projectSortOrder ?? "inherit";
   return (
@@ -88,8 +88,7 @@ export function CustomProjectGroupsSettings() {
   const groups = useCustomProjectGroups();
   const legacySidebarEnabled = useClientSettings((settings) => settings.legacySidebarEnabled);
   const globalSortOrder = useClientSettings((settings) => settings.sidebarProjectSortOrder);
-  const updateSettings = useUpdateClientSettings();
-  const actions = useCustomProjectGroupActions();
+  const actions = customProjectGroupActions;
 
   return (
     <>
@@ -104,7 +103,7 @@ export function CustomProjectGroupsSettings() {
           <Switch
             checked={enabled}
             onCheckedChange={(checked) =>
-              updateSettings({ sidebarCustomProjectGroupsEnabled: Boolean(checked) })
+              updateClientSettings({ sidebarCustomProjectGroupsEnabled: Boolean(checked) })
             }
             aria-label="Custom project groups"
           />

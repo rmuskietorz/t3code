@@ -22,6 +22,7 @@ github:btsouth
 github:cestercian
 github:chrisdeeming
 github:chuks-qua
+-github:coygeek Filed over 270 automated issues, about 50 a day at peak, far past what maintainers can triage
 github:cursoragent
 github:D3OXY
 github:dbalders
@@ -53,11 +54,13 @@ github:mackinleysmith
 github:maria-rcks
 github:MatthewFeroz
 github:maxwellyoung
+github:mweinbach
 github:mwolson
 github:myacoub91
 github:naMqe-h
 github:nateEc
 github:naveed949
+github:nexxeln
 github:nmggithub
 github:Noojuno
 github:notkainoa
@@ -81,6 +84,7 @@ github:tris203
 github:tsouth89
 github:UtkarshUsername
 github:vitalyiegorov
+-github:wSedlacek Opened over 130 unapproved PRs in 12 days, far past the open PR limit
 github:Yash-Singh1
 github:yashranaway
 github:Ymit24

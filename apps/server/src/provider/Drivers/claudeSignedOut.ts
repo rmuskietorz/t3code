@@ -43,14 +43,13 @@ export const makeClaudeSignedOutMarker = Effect.fn("makeClaudeSignedOutMarker")(
     );
 
   /** Returns whether the marker changed, so callers only refresh on a transition. */
-  const set = (signedOut: boolean) =>
-    Effect.gen(function* () {
-      const next = signedOut ? yield* credentialsStamp : undefined;
-      const previous = yield* Ref.getAndSet(markerRef, next);
-      if (previous === next) return false;
-      yield* persist(next);
-      return (previous === undefined) !== (next === undefined);
-    });
+  const set = Effect.fn("ClaudeSignedOut.set")(function* (signedOut: boolean) {
+    const next = signedOut ? yield* credentialsStamp : undefined;
+    const previous = yield* Ref.getAndSet(markerRef, next);
+    if (previous === next) return false;
+    yield* persist(next);
+    return (previous === undefined) !== (next === undefined);
+  });
 
   const isSignedOut = Effect.gen(function* () {
     const marker = yield* Ref.get(markerRef);

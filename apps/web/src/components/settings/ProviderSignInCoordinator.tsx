@@ -1,15 +1,16 @@
 import { useAtomValue } from "@effect/atom-react";
 import { AuthTerminalOperateScope, type ServerProvider } from "@t3tools/contracts";
+import { Atom } from "effect/reactivity";
 import { useState } from "react";
 
 import { resolveOnboardingProviderLoginCommand } from "../../onboarding/providerReadiness.logic";
 import { formatProviderDriverKindLabel } from "../../providerModels";
 import { environmentPresentations } from "../../state/presentation";
-import { serverEnvironment } from "../../state/server";
+import { providersIgnoringCheckedAtAtom, serverEnvironment } from "../../state/server";
 import { useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { CommandBlock } from "../CommandBlock";
-import { AgentInstallTerminal } from "../onboarding/AgentInstallTerminal";
+import { AgentInstallTerminal, isInstallableDriver } from "../onboarding/WelcomePage";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -21,12 +22,9 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 
-// Providers whose CLI signs in from a terminal; the others keep their own setup flow.
-const TERMINAL_SIGN_IN_DRIVERS: ReadonlySet<string> = new Set(["claudeAgent", "codex"]);
-
 function needsSignIn(provider: ServerProvider): boolean {
   return (
-    TERMINAL_SIGN_IN_DRIVERS.has(provider.driver) &&
+    isInstallableDriver(provider.driver) &&
     provider.enabled &&
     provider.installed &&
     provider.status !== "disabled" &&
@@ -39,21 +37,34 @@ function needsSignIn(provider: ServerProvider): boolean {
  * includes the state found at app start. "Later" holds until that provider is signed in again,
  * so a later sign-out asks again.
  */
-export function ProviderSignInCoordinator() {
-  const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
-    reportFailure: false,
-  });
-  const signedOut = [...presentations].flatMap(([environmentId, presentation]) => {
+const signedOutProvidersAtom = Atom.make((get) =>
+  [...get(environmentPresentations.presentationsAtom)].flatMap(([environmentId, presentation]) => {
     const serverConfig = presentation.serverConfig;
     if (presentation.connection.phase !== "connected" || !serverConfig) return [];
-    return serverConfig.providers.filter(needsSignIn).map((provider) => ({
-      key: JSON.stringify([environmentId, provider.instanceId]),
-      environmentId,
-      environmentLabel: presentation.entry.target.label,
-      provider,
-      serverConfig,
-    }));
+    return get(providersIgnoringCheckedAtAtom(environmentId))
+      .filter(needsSignIn)
+      .flatMap((provider) => {
+        const driver = provider.driver;
+        // Only CLIs that sign in from a terminal; the others keep their own setup flow.
+        if (!isInstallableDriver(driver)) return [];
+        return [
+          {
+            key: JSON.stringify([environmentId, provider.instanceId]),
+            environmentId,
+            environmentLabel: presentation.entry.target.label,
+            provider,
+            serverConfig,
+            driver,
+          },
+        ];
+      });
+  }),
+).pipe(Atom.withLabel("web-provider-sign-in-signed-out"));
+
+export function ProviderSignInCoordinator() {
+  const signedOut = useAtomValue(signedOutProvidersAtom);
+  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
+    reportFailure: false,
   });
   const signedOutKeys = signedOut.map((entry) => entry.key).join("\n");
   const [dismissal, setDismissal] = useState(() => ({
@@ -110,11 +121,18 @@ export function ProviderSignInCoordinator() {
               key={next.key}
               session={{
                 environmentId: next.environmentId,
-                driver: next.provider.driver,
+                driver: next.driver,
                 providerInstanceId: next.provider.instanceId,
                 cwd: next.serverConfig.cwd,
                 command,
                 keybindings: next.serverConfig.keybindings,
+              }}
+              onCommandFinished={() => {
+                // A finished login is the moment to re-check; a success closes this dialog.
+                void refreshProviders({
+                  environmentId: next.environmentId,
+                  input: { instanceId: next.provider.instanceId, fresh: true },
+                });
               }}
               onClose={() => {
                 setSigningIn(null);

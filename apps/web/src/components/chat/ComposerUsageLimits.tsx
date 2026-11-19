@@ -1,4 +1,5 @@
 import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   formatDuration,
   formatResetsIn,
@@ -71,13 +72,45 @@ export function usageLimitsBannerItem(
   return {
     id,
     variant: "info",
-    priority: "notice",
     icon: <GaugeIcon />,
     title: "Usage limits",
     description: summary,
     dismissLabel: "Dismiss usage limits",
     onDismiss,
     children: <UsageLimitsBannerBody report={report} environmentId={environmentId} />,
+  };
+}
+
+export function modelFallbackBannerItem({
+  fallbackModelName,
+  defaultProviderName,
+  defaultModelName,
+  resetsAt,
+  timestampFormat,
+  onUseDefault,
+  onDismiss,
+}: {
+  readonly fallbackModelName: string;
+  readonly defaultProviderName: string;
+  readonly defaultModelName: string;
+  readonly resetsAt: string | null;
+  readonly timestampFormat: TimestampFormat;
+  readonly onUseDefault: () => void;
+  readonly onDismiss: () => void;
+}): ComposerBannerStackItem {
+  return {
+    id: "fallback-model",
+    variant: "info",
+    icon: <GaugeIcon />,
+    title: `Using ${fallbackModelName}`,
+    description: `${defaultProviderName} is out of usage${resetsAt ? ` · resets ${formatUpcomingTimestamp(resetsAt, timestampFormat)}` : ""}`,
+    actions: (
+      <Button size="xs" variant="ghost" onClick={onUseDefault}>
+        Use {defaultModelName}
+      </Button>
+    ),
+    dismissLabel: "Dismiss fallback model notice",
+    onDismiss,
   };
 }
 
@@ -111,6 +144,7 @@ function UsageLimitsBannerBody({
                 <LimitWindows
                   compact
                   driver={account.driver}
+                  accentColor={account.accentColor}
                   windows={account.limits.windows}
                   now={now}
                 />
