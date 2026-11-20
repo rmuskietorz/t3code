@@ -12,7 +12,7 @@ import * as AgentSessionImporter from "./AgentSessionImporter.ts";
  * A later run never adds messages to a thread it already imported, so a
  * periodic run leaves a session alone until it has been idle this long.
  */
-export const AUTO_IMPORT_QUIET_PERIOD = Duration.minutes(10);
+const AUTO_IMPORT_QUIET_PERIOD = Duration.minutes(10);
 /** Checking every minute lets a changed interval apply without a restart. */
 const TICK = Duration.minutes(1);
 

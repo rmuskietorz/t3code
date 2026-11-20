@@ -42,7 +42,7 @@ export class TerminalCommandRunner extends Context.Service<
   }
 >()("t3/terminal/CommandRunner/TerminalCommandRunner") {}
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const processRunner = yield* ProcessRunner.ProcessRunner;
 

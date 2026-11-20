@@ -9,20 +9,20 @@ import { activeRenderer, registerPane, setActivePane } from "./RendererContents.
  * half is a full app renderer, so each keeps its own native preview browser.
  */
 
-export const SPLIT_TOGGLE_CHANNEL = "split:toggle";
-export const SPLIT_OPEN_CHANNEL = "split:open";
-export const SPLIT_CLOSE_CHANNEL = "split:close";
-export const SPLIT_MINIMIZE_CHANNEL = "split:minimize";
-export const SPLIT_OPEN_WINDOW_CHANNEL = "window:open";
-export const SPLIT_STATE_CHANNEL = "split:state";
-export const PANE_PROFILE_CHANNEL = "pane:profile";
-export const PANE_PROFILE_INITIAL_CHANNEL = "pane:profile-initial";
-export const PANE_TITLE_CHANNEL = "pane:title";
-export const DIVIDER_START_CHANNEL = "divider:start";
-export const DIVIDER_END_CHANNEL = "divider:end";
-export const STRIP_TABS_CHANNEL = "strip:tabs";
-export const STRIP_RESTORE_CHANNEL = "strip:restore";
-export const STRIP_CLOSE_CHANNEL = "strip:close";
+const SPLIT_TOGGLE_CHANNEL = "split:toggle";
+const SPLIT_OPEN_CHANNEL = "split:open";
+const SPLIT_CLOSE_CHANNEL = "split:close";
+const SPLIT_MINIMIZE_CHANNEL = "split:minimize";
+const SPLIT_OPEN_WINDOW_CHANNEL = "window:open";
+const SPLIT_STATE_CHANNEL = "split:state";
+const PANE_PROFILE_CHANNEL = "pane:profile";
+const PANE_PROFILE_INITIAL_CHANNEL = "pane:profile-initial";
+const PANE_TITLE_CHANNEL = "pane:title";
+const DIVIDER_START_CHANNEL = "divider:start";
+const DIVIDER_END_CHANNEL = "divider:end";
+const STRIP_TABS_CHANNEL = "strip:tabs";
+const STRIP_RESTORE_CHANNEL = "strip:restore";
+const STRIP_CLOSE_CHANNEL = "strip:close";
 
 const DIVIDER_WIDTH = 6;
 const MIN_PANE_WIDTH = 360;
@@ -702,7 +702,7 @@ body{display:flex;align-items:center;gap:4px;padding:0 6px;border-top:1px solid 
 const container=document.getElementById("tabs");
 const SIDES=[{side:"left",label:"Left"},{side:"right",label:"Right"}];
 const renderTab=(tab)=>{const element=document.createElement("div");element.className="tab";
-element.title=tab.title+" — click to show it as the "+tab.side+" half";
+element.title=tab.title+": click to show it as the "+tab.side+" half";
 const title=document.createElement("span");title.className="title";title.textContent=tab.title;
 const close=document.createElement("button");close.className="close";close.textContent="✕";close.title="Close for good";
 close.addEventListener("click",(event)=>{event.stopPropagation();window.splitChrome.closeTab(tab.id);});
