@@ -136,6 +136,12 @@ const paneViews = new Map<number, PaneView>();
 const controllers = new Map<number, SplitView>();
 let nextTabId = 1;
 
+/** The app renders in split view panes, so their top frames count as the app for IPC. */
+export function isSplitPaneMainFrame(senderId: number, senderFrame: unknown): boolean {
+  const view = paneViews.get(senderId);
+  return view !== undefined && view.webContents.mainFrame === senderFrame;
+}
+
 function destroyView(view: Electron.WebContentsView | null | undefined) {
   if (view && !view.webContents.isDestroyed()) view.webContents.close();
 }
