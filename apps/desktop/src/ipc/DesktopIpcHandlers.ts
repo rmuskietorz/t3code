@@ -4,6 +4,7 @@ import { receiveProviderAuthCallback, cancelProviderAuthCallback } from "./metho
 import * as DesktopIpc from "./DesktopIpc.ts";
 import { installNotificationBadge } from "./methods/notificationBadge.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
+import { getCloseWindowChoice, setCloseWindowChoice } from "./methods/closeWindowChoice.ts";
 import { getConnectionCatalog, setConnectionCatalog } from "./methods/connectionCatalog.ts";
 import {
   getHostEnvironmentId,
@@ -107,6 +108,8 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handleSync(getLocalEnvironmentBootstraps);
   yield* ipc.handleSync(getLocalEnvironmentEnabled);
   yield* ipc.handle(setLocalEnvironmentEnabled);
+  yield* ipc.handleSync(getCloseWindowChoice);
+  yield* ipc.handle(setCloseWindowChoice);
   yield* ipc.handle(getHostEnvironmentId);
   yield* ipc.handle(getLocalEnvironmentBearerToken);
 

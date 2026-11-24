@@ -1,6 +1,8 @@
 import {
+  DesktopCloseWindowChoiceSchema,
   DesktopServerExposureModeSchema,
   DesktopUpdateChannelSchema,
+  type DesktopCloseWindowChoice,
   type DesktopServerExposureMode,
   type DesktopUpdateChannel,
 } from "@t3tools/contracts";
@@ -28,6 +30,7 @@ import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
 import { isValidDistroName } from "../wsl/wslPathParsing.ts";
 
 export interface DesktopSettings {
+  readonly closeWindowChoice: DesktopCloseWindowChoice;
   readonly localEnvironmentEnabled: boolean;
   readonly linuxPasswordStore: LinuxPasswordStorePreference;
   readonly mainWindowBounds: DesktopWindowBounds | null;
@@ -69,6 +72,7 @@ export const DEFAULT_MAIN_WINDOW_SIZE = {
 } as const;
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
+  closeWindowChoice: "ask",
   localEnvironmentEnabled: true,
   linuxPasswordStore: DEFAULT_LINUX_PASSWORD_STORE,
   mainWindowBounds: null,
@@ -96,6 +100,7 @@ const optionalReadableKey = <S extends Schema.Top>(schema: S) =>
   Schema.optionalKey(schema.pipe(Schema.catchDecoding(() => Effect.succeedNone)));
 
 const DesktopSettingsDocument = Schema.Struct({
+  closeWindowChoice: optionalReadableKey(DesktopCloseWindowChoiceSchema),
   localEnvironmentEnabled: optionalReadableKey(Schema.Boolean),
   linuxPasswordStore: optionalReadableKey(Schema.Unknown),
   mainWindowBounds: optionalReadableKey(Schema.NullOr(DesktopWindowBoundsDocument)),
@@ -179,6 +184,9 @@ export class DesktopAppSettings extends Context.Service<
     readonly setWslOnly: (
       enabled: boolean,
     ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
+    readonly setCloseWindowChoice: (
+      choice: DesktopCloseWindowChoice,
+    ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
     readonly applyWslWindowsFallback: Effect.Effect<
       DesktopSettingsChange,
       DesktopSettingsWriteError
@@ -225,6 +233,7 @@ function normalizeDesktopSettingsDocument(
     (parsed.wslBackendEnabled === undefined && parsed.wslMode === "wsl");
 
   return {
+    closeWindowChoice: parsed.closeWindowChoice ?? "ask",
     localEnvironmentEnabled: parsed.localEnvironmentEnabled !== false,
     linuxPasswordStore: normalizeLinuxPasswordStorePreference(parsed.linuxPasswordStore),
     mainWindowBounds,
@@ -248,6 +257,10 @@ function toDesktopSettingsDocument(
   defaults: DesktopSettings,
 ): DesktopSettingsDocument {
   const document: Mutable<DesktopSettingsDocument> = {};
+
+  if (settings.closeWindowChoice !== defaults.closeWindowChoice) {
+    document.closeWindowChoice = settings.closeWindowChoice;
+  }
 
   if (settings.localEnvironmentEnabled !== defaults.localEnvironmentEnabled) {
     document.localEnvironmentEnabled = settings.localEnvironmentEnabled;
@@ -374,6 +387,15 @@ function setWslOnly(settings: DesktopSettings, enabled: boolean): DesktopSetting
         ...settings,
         wslOnly: enabled,
       };
+}
+
+function setCloseWindowChoice(
+  settings: DesktopSettings,
+  choice: DesktopCloseWindowChoice,
+): DesktopSettings {
+  return settings.closeWindowChoice === choice
+    ? settings
+    : { ...settings, closeWindowChoice: choice };
 }
 
 function setLocalEnvironmentEnabled(settings: DesktopSettings, enabled: boolean): DesktopSettings {
@@ -599,6 +621,11 @@ export const make = Effect.gen(function* () {
         return yield* persist((settings) => setLocalEnvironmentEnabled(settings, enabled));
       },
     ),
+    setCloseWindowChoice: Effect.fn("desktop.settings.setCloseWindowChoice")(function* (choice) {
+      yield* Effect.annotateCurrentSpan({ choice });
+
+      return yield* persist((settings) => setCloseWindowChoice(settings, choice));
+    }),
     applyWslWindowsFallback: persist(applyWslWindowsFallback).pipe(
       Effect.withSpan("desktop.settings.applyWslWindowsFallback"),
     ),
@@ -660,6 +687,11 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
         setLocalEnvironmentEnabled: Effect.fn("DesktopAppSettings.setLocalEnvironmentEnabled")(
           function (enabled) {
             return update((settings) => setLocalEnvironmentEnabled(settings, enabled));
+          },
+        ),
+        setCloseWindowChoice: Effect.fn("DesktopAppSettings.setCloseWindowChoice")(
+          function (choice) {
+            return update((settings) => setCloseWindowChoice(settings, choice));
           },
         ),
         applyWslWindowsFallback: update(applyWslWindowsFallback),

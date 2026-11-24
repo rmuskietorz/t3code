@@ -13,6 +13,7 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopAppSettings from "./DesktopAppSettings.ts";
 
 const DesktopSettingsPatch = Schema.Struct({
+  closeWindowChoice: Schema.optionalKey(Schema.Literals(["ask", "window", "all"])),
   linuxPasswordStore: Schema.optionalKey(
     Schema.Literals(["auto", "gnome-libsecret", "kwallet", "kwallet5", "kwallet6"]),
   ),
@@ -223,6 +224,7 @@ describe("DesktopSettings", () => {
         );
 
         assert.deepEqual(yield* settings.load, {
+          closeWindowChoice: "ask",
           linuxPasswordStore: "auto",
           localEnvironmentEnabled: true,
           mainWindowBounds: { x: 120, y: 80, width: 1280, height: 900 },
@@ -295,11 +297,13 @@ describe("DesktopSettings", () => {
 
         yield* settings.setMainWindowBounds({ x: -1200, y: 40, width: 400, height: 360 }, true);
         yield* settings.setServerExposureMode("network-accessible");
+        yield* settings.setCloseWindowChoice("all");
 
         const persisted = yield* decodeDesktopSettingsPatch(
           yield* fileSystem.readFileString(environment.desktopSettingsPath),
         );
         assert.deepEqual(persisted, {
+          closeWindowChoice: "all",
           mainWindowBounds: { x: -1200, y: 40, width: 400, height: 360 },
           mainWindowMaximized: true,
           serverExposureMode: "network-accessible",
@@ -311,6 +315,7 @@ describe("DesktopSettings", () => {
         }).pipe(Effect.provide(DesktopAppSettings.layer));
         assert.deepEqual(restored.mainWindowBounds, persisted.mainWindowBounds);
         assert.isTrue(restored.mainWindowMaximized);
+        assert.equal(restored.closeWindowChoice, "all");
       }),
     ),
   );
@@ -376,6 +381,7 @@ describe("DesktopSettings", () => {
         });
 
         assert.deepEqual(yield* settings.load, {
+          closeWindowChoice: "ask",
           linuxPasswordStore: "auto",
           localEnvironmentEnabled: true,
           mainWindowBounds: null,
@@ -405,6 +411,7 @@ describe("DesktopSettings", () => {
         });
 
         assert.deepEqual(yield* settings.load, {
+          closeWindowChoice: "ask",
           linuxPasswordStore: "auto",
           localEnvironmentEnabled: true,
           mainWindowBounds: null,

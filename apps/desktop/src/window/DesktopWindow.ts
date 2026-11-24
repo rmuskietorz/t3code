@@ -10,7 +10,11 @@ import * as Semaphore from "effect/Semaphore";
 
 import * as Electron from "electron";
 
-import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+import {
+  type DesktopCloseWindowChoice,
+  type DesktopSnapShotEvent,
+  DEFAULT_CLIENT_SETTINGS,
+} from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -461,10 +465,71 @@ export const make = Effect.gen(function* () {
     (message, cause) => void runPromise(logWindowWarning(message, { cause })),
     (message, details) => void runPromise(logWindowInfo(message, details)),
   );
+  // Split view windows, the only kind that can be open side by side.
+  const splitWindows = new Set<Electron.BrowserWindow>();
+  const closeConfirmed = new WeakSet<Electron.BrowserWindow>();
+  const closePromptOpen = new WeakSet<Electron.BrowserWindow>();
+  let appQuitting = false;
   if (environment.splitView) {
     installSplitViewIpc();
-    Electron.app.on("before-quit", () => splitSession.freeze());
+    Electron.app.on("before-quit", () => {
+      appQuitting = true;
+      splitSession.freeze();
+    });
   }
+
+  const askCloseWindowChoice = Effect.fn("desktop.window.askCloseWindowChoice")(function* (
+    window: Electron.BrowserWindow,
+  ) {
+    const result = yield* Effect.promise(() =>
+      Electron.dialog.showMessageBox(window, {
+        type: "question",
+        title: "Close window",
+        message: "Close only this window or all windows?",
+        detail: "Closing all windows quits T3 Code. They all open again on the next start.",
+        buttons: ["Close This Window", "Close All Windows", "Cancel"],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+        checkboxLabel: "Remember my choice",
+      }),
+    );
+    if (result.response === 2) return null;
+    const choice: DesktopCloseWindowChoice = result.response === 1 ? "all" : "window";
+    if (result.checkboxChecked) {
+      yield* desktopSettings
+        .setCloseWindowChoice(choice)
+        .pipe(
+          Effect.catch((cause) =>
+            logWindowWarning("could not remember the close window choice", { cause }),
+          ),
+        );
+    }
+    return choice;
+  });
+
+  const confirmWindowClose = Effect.fn("desktop.window.confirmWindowClose")(function* (
+    window: Electron.BrowserWindow,
+  ) {
+    const saved = (yield* desktopSettings.get).closeWindowChoice;
+    const choice =
+      saved === "ask"
+        ? yield* askCloseWindowChoice(window).pipe(
+            Effect.ensuring(Effect.sync(() => closePromptOpen.delete(window))),
+            Effect.catchCause((cause) =>
+              logWindowWarning("close window prompt failed; closing this window", { cause }).pipe(
+                Effect.as("window" as const),
+              ),
+            ),
+          )
+        : saved;
+    if (choice === "all") {
+      Electron.app.quit();
+    } else if (choice === "window" && !window.isDestroyed()) {
+      closeConfirmed.add(window);
+      window.close();
+    }
+  });
 
   const createWindow = Effect.fn("desktop.window.createWindow")(function* (options: {
     readonly state: SplitWindowState;
@@ -1049,6 +1114,15 @@ export const make = Effect.gen(function* () {
       : null;
     if (split) {
       splitSession.add(split, window);
+      splitWindows.add(window);
+      window.on("closed", () => splitWindows.delete(window));
+      window.on("close", (event) => {
+        if (appQuitting || closeConfirmed.has(window) || splitWindows.size < 2) return;
+        event.preventDefault();
+        if (closePromptOpen.has(window)) return;
+        closePromptOpen.add(window);
+        void runPromise(confirmWindowClose(window));
+      });
     } else {
       yield* rendererHistory.register(window.webContents, { surface: "main" });
       installRendererHooks(window.webContents);

@@ -93,6 +93,7 @@ import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { CloseWindowChoiceSetting } from "./CloseWindowChoiceSetting";
 import { Switch } from "../ui/switch";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -1013,6 +1014,7 @@ export function GeneralSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection id="confirmations" title={gt("Confirmations")}>
+        <CloseWindowChoiceSetting />
         <SettingsRow
           {...setting("unpin-confirmation")}
           description={<T>Ask before unpinning a thread from the pinned section.</T>}

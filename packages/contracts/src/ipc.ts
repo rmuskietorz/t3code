@@ -501,6 +501,10 @@ export type PersistedSavedEnvironmentRecord = typeof PersistedSavedEnvironmentRe
 
 export type DesktopServerExposureMode = "local-only" | "network-accessible";
 
+/** What closing one of several windows does: ask, close only that window, or quit. */
+export const DesktopCloseWindowChoiceSchema = Schema.Literals(["ask", "window", "all"]);
+export type DesktopCloseWindowChoice = typeof DesktopCloseWindowChoiceSchema.Type;
+
 export const DesktopServerExposureModeSchema = Schema.Literals([
   "local-only",
   "network-accessible",
@@ -1085,6 +1089,9 @@ export interface DesktopBridge {
   getLocalEnvironmentBootstraps: () => readonly DesktopEnvironmentBootstrap[];
   getLocalEnvironmentEnabled: () => boolean;
   setLocalEnvironmentEnabled: (enabled: boolean) => Promise<void>;
+  /** Present on desktop builds that can open several windows. */
+  getCloseWindowChoice?: () => DesktopCloseWindowChoice;
+  setCloseWindowChoice?: (choice: DesktopCloseWindowChoice) => Promise<void>;
   /** The environment ID recorded in this app's T3 home, such as its own machine's background service. */
   getHostEnvironmentId?: () => Promise<string | null>;
   getLocalEnvironmentBearerToken: () => Promise<string>;

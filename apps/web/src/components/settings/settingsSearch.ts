@@ -888,6 +888,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["ask before thread pinned section"],
   },
   {
+    id: "close-window-choice",
+    title: "Closing a window",
+    to: "/settings/general",
+    searchTerms: ["close all windows quit ask remember choice"],
+  },
+  {
     id: "archive-confirmation",
     title: msg("Archive confirmation"),
     to: "/settings/general",
