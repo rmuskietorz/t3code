@@ -504,7 +504,7 @@ function useSidebarThreads(input: {
   const settledVisibleCount =
     settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
 
-  const partition = partitionSidebarThreads({
+  const partitioned = partitionSidebarThreads({
     threads,
     scopedProjectKeys,
     delegatedUnderParent,
@@ -516,6 +516,15 @@ function useSidebarThreads(input: {
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
+  // Fork: boring folders keep pinned threads at the top of their own project.
+  const partition =
+    folderGroups === null
+      ? partitioned
+      : {
+          ...partitioned,
+          pinnedThreads: EMPTY_THREADS,
+          activeThreads: [...partitioned.pinnedThreads, ...partitioned.activeThreads],
+        };
   const { pinnedThreads, activeThreads, workingThreads, snoozedThreads, settledThreads } =
     partition;
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
@@ -1491,8 +1500,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           [...scopeGroups, ...profileProjectGroups.filter((project) => project.archived)]
         : explicitScopeGroups
       : null,
-    keepEmptyFolders: (group) =>
-      explicitScopeGroups.length > 0 || (group.pinned && !group.archived),
+    // Fork: every open project keeps its folder, like the legacy sidebar.
+    keepEmptyFolders: (group) => explicitScopeGroups.length > 0 || !group.archived,
   });
   // The header menu and the command palette both collapse or expand every section.
   const handleBulkExpansion = useStableCallback((action: SidebarBulkExpansionAction) => {
