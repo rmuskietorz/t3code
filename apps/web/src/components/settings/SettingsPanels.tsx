@@ -556,6 +556,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.proactivePanelsEnabled !== DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled
       ? ["Open pull requests and changes panels proactively"]
       : []),
+    ...(settings.agentTasksStripEnabled !== DEFAULT_UNIFIED_SETTINGS.agentTasksStripEnabled
+      ? ["Agent tasks above the composer"]
+      : []),
     ...(settings.showSkillsInSlashMenu !== DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu
       ? ["Show skills in slash menu"]
       : []),
@@ -706,6 +709,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffLayout: DEFAULT_UNIFIED_SETTINGS.diffLayout,
       diffBaseBranch: DEFAULT_UNIFIED_SETTINGS.diffBaseBranch,
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
+      agentTasksStripEnabled: DEFAULT_UNIFIED_SETTINGS.agentTasksStripEnabled,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
       usageLimitsIndicatorEnabled: DEFAULT_UNIFIED_SETTINGS.usageLimitsIndicatorEnabled,
@@ -1418,6 +1422,31 @@ export function ChatSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection id="activity" title="Activity">
+        <SettingsRow
+          {...searchableSetting("agent-tasks-strip")}
+          description="Show the agent's todo list above the composer while it works through it. The thread details card and the Tasks panel tab show it too."
+          resetAction={
+            settings.agentTasksStripEnabled !== DEFAULT_UNIFIED_SETTINGS.agentTasksStripEnabled ? (
+              <SettingResetButton
+                label="agent tasks above the composer"
+                onClick={() =>
+                  updateSettings({
+                    agentTasksStripEnabled: DEFAULT_UNIFIED_SETTINGS.agentTasksStripEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.agentTasksStripEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ agentTasksStripEnabled: Boolean(checked) })
+              }
+              aria-label="Show agent tasks above the composer"
+            />
+          }
+        />
         <ToolCallVisibilityRow />
       </SettingsSection>
 

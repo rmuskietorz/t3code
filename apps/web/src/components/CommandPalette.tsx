@@ -74,6 +74,7 @@ import {
   LayersIcon,
   MessageSquareDashedIcon,
   LinkIcon,
+  ListTodoIcon,
   MessageSquareIcon,
   PaletteIcon,
   RotateCcwIcon,
@@ -1512,6 +1513,20 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyReference",
       run: copyActiveThreadReference,
+    });
+  }
+
+  if (activeThread !== null) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push({
+      kind: "action",
+      value: "action:open-agent-tasks",
+      searchTerms: ["tasks", "todo", "todo list", "plan", "progress", "steps"],
+      title: "Show agent tasks",
+      icon: <ListTodoIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "tasks");
+      },
     });
   }
 

@@ -792,6 +792,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["queue steer running turn send default behavior composer"],
   },
   {
+    id: "agent-tasks-strip",
+    title: "Agent tasks above the composer",
+    to: "/settings/chat",
+    searchTerms: ["todo list tasks plan progress steps duration agent"],
+  },
+  {
     id: "provider-update-checks",
     title: "Provider update checks",
     to: "/settings/maintenance",

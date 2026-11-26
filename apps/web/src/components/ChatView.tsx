@@ -344,6 +344,7 @@ import {
   shouldShowThreadErrorBanner,
 } from "./chat/ThreadErrorBanner";
 import { QueuedRunsControl, type QueuedRunsControlHandle } from "./chat/QueuedRunsControl";
+import { AgentTasksStrip } from "./chat/AgentTasks";
 import { useThreadLinkedPullRequest } from "./pullRequest/useThreadLinkedPullRequest";
 import { useProactivePanels } from "../hooks/useProactivePanels";
 import { useIncrementalTimelineEntries } from "../hooks/useIncrementalTimelineEntries";
@@ -3766,6 +3767,9 @@ export default function ChatView(props: ChatViewProps) {
                                   ) : null
                                 }
                               />
+                            ) : null}
+                            {settings.agentTasksStripEnabled && isServerThread ? (
+                              <AgentTasksStrip threadRef={activeThreadRef} />
                             ) : null}
                             {!composerMounted ? null : (
                               <ChatComposer
